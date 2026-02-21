@@ -1,0 +1,113 @@
+트리 메뉴 그리기 - 기본 로직 정리
+====================================
+
+■ 전체 흐름
+  프론트 mount → API 호출 → 백엔드 DB 조회 → 재귀 트리 JSON 응답 → 프론트 렌더링
+
+
+========================================
+1. 백엔드
+========================================
+
+1-1. DB 구조 (ProjectDevSpec 엔티티)
+─────────────────────────────────────
+  - 자기 참조 관계 (parent → 자기 자신 테이블)
+  - 한 테이블로 프로젝트/페이지 모두 저장
+
+  컬럼:
+    id          : PK
+    name        : 노드 이름 (같은 부모 아래 중복 불가)
+    parent_id   : FK → 자기 자신 (null이면 루트)
+    type        : PROJECT | PAGE
+    status      : TODO | IN_PROGRESS | DONE
+    sort_order  : 같은 레벨 내 정렬 순서
+    depth       : 트리 깊이 (루트=0)
+    created_at  : 생성일
+    updated_at  : 수정일
+
+  관계:
+    parent  → ManyToOne (LAZY)
+    children → OneToMany (CASCADE ALL, orphanRemoval=true, ORDER BY sortOrder ASC)
+
+1-2. 트리 조회 로직 (DevSpecService)
+─────────────────────────────────────
+  1) Repository에서 parent_id가 null인 루트 노드들 조회
+  2) JPA @OneToMany 관계로 children이 자동으로 딸려옴
+  3) DevSpecTreeResponse.from(entity) 에서 재귀적으로 변환
+     → 자식이 있으면 children 리스트에 각각 from() 호출
+
+  응답 구조:
+    {
+      id, name, type, status, sortOrder, depth,
+      children: [
+        { id, name, type, status, sortOrder, depth, children: [...] }
+      ]
+    }
+
+1-3. 주요 API
+─────────────
+  GET  /api/devspec/projects         → 전체 트리 목록 (루트 노드들 + 재귀 자식)
+  GET  /api/devspec/projects/{id}/tree → 특정 프로젝트의 트리
+  POST /api/devspec/projects         → 루트 프로젝트 생성
+  POST /api/devspec/projects/{id}/pages → 하위 페이지 생성
+  DELETE /api/devspec/{id}           → 노드 삭제 (자식도 cascade 삭제)
+
+
+========================================
+2. 프론트엔드
+========================================
+
+2-1. 데이터 흐름
+─────────────────
+  1) DevSpecPage 마운트 → useDevSpecTree 훅에서 fetchProjects() 호출
+  2) GET /api/devspec/projects → 응답을 projects 상태에 저장
+  3) DevSpecTree 컴포넌트에 projects 배열 전달
+  4) 컴포넌트가 트리 렌더링
+
+2-2. 트리 렌더링 방식 (DevSpecTree 컴포넌트)
+─────────────────────────────────────────────
+  현재는 2단계 구조로 렌더링:
+    1단계: projects.map() → 프로젝트 노드 렌더링
+    2단계: project.children.map() → 페이지 노드 렌더링
+
+  프로젝트 노드:
+    [▶/▼] [●상태색] 프로젝트명  [편집] [삭제] [페이지추가]
+
+  페이지 노드 (프로젝트 펼침 시):
+    　　[●상태색] 페이지명  [편집] [삭제]
+
+2-3. 펼침/접힘 관리
+────────────────────
+  - expanded: Set<number> 로 펼쳐진 프로젝트 ID 관리
+  - 토글 버튼 클릭 시 Set에 추가/삭제
+  - 페이지 새로 추가하면 해당 프로젝트 자동 펼침
+  - 상태는 로컬(컴포넌트)에서만 관리, 새로고침 시 초기화
+
+2-4. 상태 표시
+───────────────
+  TODO        → 회색 ●
+  IN_PROGRESS → 주황 ●
+  DONE        → 초록 ●
+
+2-5. 인라인 편집/생성
+─────────────────────
+  - 더블클릭 또는 편집 버튼 → editingId 세팅 → input 표시
+  - Enter → 저장 API 호출 → 트리 갱신
+  - Escape → 취소
+
+2-6. 노드 선택
+───────────────
+  - 노드 이름 클릭 → onSelect(id) → DevSpecPage에서 selectedId 세팅
+  - selectedId로 상세 패널(오른쪽) 데이터 로드
+
+2-7. 화면 레이아웃
+──────────────────
+  ┌──────────────┬──────────────────────────────┐
+  │  트리 패널    │  상세 패널                     │
+  │  (w-72 고정)  │  (나머지 영역)                 │
+  │              │                              │
+  │  ▼ 프로젝트A  │  노드명 / 상태                 │
+  │    페이지1    │  [FIGMA] [체크리스트] [MMD] [노트]│
+  │    페이지2    │  콘텐츠 편집 영역               │
+  │  ▶ 프로젝트B  │                              │
+  └──────────────┴──────────────────────────────┘

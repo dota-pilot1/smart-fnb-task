@@ -1,0 +1,55 @@
+DevSpecTreeResponse::from 이해하기
+======================================
+
+
+1. :: 은 뭐야?
+───────────────
+  "메서드 레퍼런스" 라고 부름.
+  뜻: "이 클래스의 이 메서드를 가리킨다"
+
+  DevSpecTreeResponse::from
+  ─────────────────── ────
+  클래스명              메서드명
+
+  → "DevSpecTreeResponse 클래스의 from 메서드를 써라"
+
+
+2. 왜 이렇게 쓰나?
+───────────────────
+  원래 이렇게 써야 함 (람다식):
+
+    .map(spec -> DevSpecTreeResponse.from(spec))
+
+  이걸 줄인 게:
+
+    .map(DevSpecTreeResponse::from)
+
+  완전히 같은 코드. 그냥 축약 문법.
+
+
+3. 풀어서 보면
+───────────────
+  [프로젝트A, 프로젝트B].stream()
+      .map(DevSpecTreeResponse::from)
+
+  이건 이거랑 같음:
+
+  [프로젝트A, 프로젝트B].stream()
+      .map(spec -> DevSpecTreeResponse.from(spec))
+
+  하나씩 실행되는 과정:
+
+    1번째: DevSpecTreeResponse.from(프로젝트A)  → 트리 JSON A
+    2번째: DevSpecTreeResponse.from(프로젝트B)  → 트리 JSON B
+
+  결과: [트리 JSON A, 트리 JSON B]
+
+
+4. 비유
+───────
+  .map(DevSpecTreeResponse::from)
+
+  = "각각을 DevSpecTreeResponse.from()에 넣어서 변환해라"
+  = 공장(from)에 원재료(엔티티)를 하나씩 넣으면 완제품(DTO)이 나옴
+
+  :: = "이 공장을 쓸 거야" 라고 가리키는 손가락

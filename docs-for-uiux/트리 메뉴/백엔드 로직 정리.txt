@@ -1,0 +1,169 @@
+트리 메뉴 백엔드 로직 정리
+============================
+
+
+========================================
+0. 트리 조립 방식 비교 (이전 프로젝트 vs 현재)
+========================================
+
+  같은 목표: DB의 flat 데이터 → 트리 JSON 응답
+  다른 점: "누가 트리를 조립하느냐"
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │  방식A (이전 프로젝트 - MyBatis/수동 조립)                      │
+  │                                                              │
+  │  DB → SELECT * FROM menu (전체 flat 조회)                     │
+  │    → Java에서 groupBy(parentId)로 Map 생성                    │
+  │      → peek + attachSubMenus()로 직접 트리 조립                │
+  │        → depth로 시작점 필터링                                 │
+  │                                                              │
+  │  특징: 개발자가 직접 트리 조립 코드를 작성                       │
+  │  사용: MyBatis, JDBC 등 ORM 없이 쓸 때                        │
+  ├──────────────────────────────────────────────────────────────┤
+  │  방식B (현재 프로젝트 - JPA 자동 로딩)                          │
+  │                                                              │
+  │  DB → SELECT * WHERE parent_id IS NULL (루트만 조회)           │
+  │    → JPA가 @OneToMany로 children 자동 로딩                    │
+  │      → DTO의 from()에서 재귀 변환                              │
+  │                                                              │
+  │  특징: JPA가 트리 조립을 대신 해줌                              │
+  │  사용: Spring Data JPA 쓸 때                                  │
+  └──────────────────────────────────────────────────────────────┘
+
+  코드 비교:
+
+  방식A (수동):
+    List<MenuDto> flatList = mapper.selectMenuList();           // 전체 조회
+    Map<Long, List<MenuDto>> grouped = groupBy(parentId);       // 그룹핑
+    flatList.stream()
+        .filter(m -> m.getDepth() == startDepth)                // 시작점 필터
+        .peek(m -> attachSubMenus(m, grouped))                  // 직접 트리 조립
+        .collect(toList());
+
+  방식B (JPA - 현재):
+    devSpecRepository.findByParentIsNull().stream()             // 루트만 조회
+        .map(DevSpecTreeResponse::from)                         // DTO 변환 (끝)
+        .toList();
+
+  → 방식B가 코드가 짧은 이유:
+    groupBy, attachSubMenus 역할을 JPA @OneToMany가 대신 함
+
+
+========================================
+1. 그래서 지금 코드가 왜 되는가? (3줄의 비밀)
+========================================
+
+  DevSpecService.java:39-43
+
+    return devSpecRepository.findByParentIsNull().stream()
+        .map(DevSpecTreeResponse::from)
+        .toList();
+
+  이 3줄 뒤에서 벌어지는 일:
+
+  ┌─ findByParentIsNull() ─────────────────────────────────────┐
+  │                                                             │
+  │  SQL: SELECT * FROM project_dev_specs WHERE parent_id IS NULL│
+  │  결과: [프로젝트A(id=1), 프로젝트B(id=4)]                     │
+  │                                                             │
+  │  이 시점에선 children은 아직 비어있음 (Lazy)                   │
+  └─────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+  ┌─ DevSpecTreeResponse.from(프로젝트A) ──────────────────────┐
+  │                                                             │
+  │  spec.getChildren()  ← 여기서 JPA가 자동 SQL 실행!           │
+  │  SQL: SELECT * FROM project_dev_specs                       │
+  │       WHERE parent_id = 1 ORDER BY sort_order               │
+  │  결과: [페이지1(id=2), 페이지2(id=3)]                        │
+  │                                                             │
+  │  → 각 자식에 대해 또 from() 재귀 호출                         │
+  │    → from(페이지1) → getChildren() → SQL 실행 → 빈 리스트     │
+  │    → from(페이지2) → getChildren() → SQL 실행 → 빈 리스트     │
+  │                                                             │
+  │  → children이 빈 리스트면 재귀 종료                           │
+  └─────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+  ┌─ 완성된 트리 JSON ─────────────────────────────────────────┐
+  │  {                                                          │
+  │    "name": "프로젝트A",                                      │
+  │    "children": [                                            │
+  │      { "name": "페이지1", "children": [] },                  │
+  │      { "name": "페이지2", "children": [] }                   │
+  │    ]                                                        │
+  │  }                                                          │
+  └─────────────────────────────────────────────────────────────┘
+
+  핵심: getChildren() 호출 시점에 JPA가 SQL을 날린다.
+  이게 "Lazy Loading"이고, 이 덕분에 개발자가
+  groupBy나 attachSubMenus를 안 짜도 트리가 완성된다.
+
+
+========================================
+2. 두 방식의 트리 조립 주체 비교
+========================================
+
+  역할              방식A (수동)              방식B (JPA - 현재)
+  ──────────────────────────────────────────────────────────────
+  DB 조회           전체 flat 조회             루트만 조회
+  부모-자식 연결     groupBy(parentId) + peek   JPA @OneToMany 자동
+  트리 조립         attachSubMenus() 재귀       getChildren() + from() 재귀
+  depth 필터        .filter(depth == N)        findByParentIsNull()
+  SQL 횟수          1번 (전체)                 N번 (깊이별 Lazy)
+  코드량            많음                       적음
+
+  → 결국 하는 일은 같다. "flat → tree 변환"
+  → 방식A는 개발자가 직접, 방식B는 JPA가 대신
+
+
+========================================
+3. 관여하는 파일과 역할
+========================================
+
+  파일                              역할
+  ──────────────────────────────────────────────────────────────
+  ProjectDevSpec.java:35            @OneToMany children 선언
+   (엔티티)                          → JPA에게 "이 필드가 자식이다" 알려줌
+                                    → getChildren() 호출 시 자동 SQL
+
+  DevSpecRepository.java:10         findByParentIsNull() 정의
+   (레포지토리)                      → 루트 노드만 조회하는 시작점
+
+  DevSpecTreeResponse.java:17       from() 재귀 변환
+   (DTO)                            → 엔티티 → JSON 변환
+                                    → getChildren()으로 JPA 트리거
+
+  DevSpecService.java:39            3줄로 위 세 개를 연결
+   (서비스)                          → 루트 조회 → DTO 변환 → 응답
+
+  DevSpecController.java:29         API 엔드포인트
+   (컨트롤러)                        → GET /api/devspec/projects
+
+
+========================================
+4. DB 테이블 데이터 예시
+========================================
+
+  project_dev_specs:
+
+  id | name       | parent_id | type    | status      | sort_order | depth
+  ---+------------+-----------+---------+-------------+------------+------
+   1 | 프로젝트A   | null      | PROJECT | TODO        | 0          | 0
+   2 | 페이지1     | 1         | PAGE    | IN_PROGRESS | 0          | 1
+   3 | 페이지2     | 1         | PAGE    | DONE        | 1          | 1
+   4 | 프로젝트B   | null      | PROJECT | TODO        | 0          | 0
+
+  → DB에는 flat하게 저장됨 (트리 구조 아님)
+  → parent_id가 부모-자식 관계를 나타냄
+  → 트리 모양은 조회 시점에 만들어짐
+
+
+========================================
+5. 한 줄 요약
+========================================
+
+  방식A: 개발자가 전체 조회 → groupBy → attachSubMenus로 직접 트리 조립
+  방식B: JPA @OneToMany가 getChildren() 시점에 자동 조립 → from()이 재귀 변환
+
+  둘 다 결과는 같은 트리 JSON. 조립하는 주체가 다를 뿐.

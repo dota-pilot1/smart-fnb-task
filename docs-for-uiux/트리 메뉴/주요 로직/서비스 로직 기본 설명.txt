@@ -1,0 +1,60 @@
+서비스 로직 기본 설명
+======================
+
+
+1. devSpecRepository는 뭐야?
+──────────────────────────────
+  project_dev_specs 테이블에 SQL을 날려주는 통로(객체).
+
+  테이블 자체는 아님. 테이블에 접근하는 도구.
+
+    devSpecRepository.findByParentIsNull()
+    ────────────────  ──────────────────
+    통로(테이블 접근)    메서드(어떤 SQL 날릴지)
+
+  내부적으로 실행되는 SQL:
+    SELECT * FROM project_dev_specs WHERE parent_id IS NULL
+
+  비유:
+    테이블 = 창고
+    repository = 창고 직원
+    findByParentIsNull() = "루트 노드만 꺼내줘" 라는 요청
+
+
+2. 루트가 여러 개면 어떻게 되냐?
+──────────────────────────────────
+  문제없음. 이미 리스트로 반환하고 있음.
+
+  반환 타입:
+    public List<DevSpecTreeResponse> findAllProjects()
+           ^^^^
+           리스트
+
+  DB에 루트가 3개 있으면:
+    id=1  parent_id=null  프로젝트A
+    id=4  parent_id=null  프로젝트B
+    id=7  parent_id=null  프로젝트C
+
+  findByParentIsNull() → [프로젝트A, 프로젝트B, 프로젝트C] 전부 가져옴
+
+  각각에 대해 from()으로 트리 변환:
+    from(프로젝트A) → { name: "프로젝트A", children: [...] }
+    from(프로젝트B) → { name: "프로젝트B", children: [...] }
+    from(프로젝트C) → { name: "프로젝트C", children: [...] }
+
+  최종 응답 JSON:
+    [
+      { "name": "프로젝트A", "children": [...] },
+      { "name": "프로젝트B", "children": [...] },
+      { "name": "프로젝트C", "children": [...] }
+    ]
+
+  → 루트 개수만큼 트리가 배열로 나감
+
+
+3. 전체 흐름 다시 정리
+──────────────────────
+  devSpecRepository.findByParentIsNull()   → 루트 [A, B, C] 조회
+                   .stream()               → 하나씩 처리 준비
+                   .map(DevSpecTreeResponse::from)  → 각각 트리 변환
+                   .toList()               → [트리A, 트리B, 트리C]
