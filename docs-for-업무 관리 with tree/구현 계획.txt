@@ -1,0 +1,392 @@
+================================================================================
+                    업무 관리 (DevSpec) 구현 계획
+================================================================================
+
+
+================================================================================
+0. 핵심 컨셉 변경
+================================================================================
+
+[기존]
+  트리 노드 = PROJECT, PAGE, REFERENCE, PLAN, CHECKLIST, TEST (6가지)
+
+[변경]
+  트리 노드 종류: PROJECT, PAGE (2가지만)
+  입력/출력 형식: FIGMA, CHECKLIST, MMD, NOTE (4가지 ContentType)
+
+  즉, 트리는 "프로젝트 > 페이지" 구조로 단순하게 유지하고,
+  각 PAGE 노드 안에서 4가지 형식으로 콘텐츠를 입력/출력한다.
+
+
+[트리 구조 예시]
+
+  DXMall 프로젝트 (PROJECT)
+  +-- 상품 목록 페이지 (PAGE)
+  +-- 상품 상세 페이지 (PAGE)
+  +-- 로그인 페이지 (PAGE)
+  +-- 회원가입 페이지 (PAGE)
+  +-- 주문 페이지 (PAGE)
+
+
+[PAGE 노드 클릭 시 오른쪽 콘텐츠 영역]
+
+  각 PAGE는 4개 탭으로 구성:
+
+  +-----------+-----------+-----------+-----------+
+  |  FIGMA    | CHECKLIST |    MMD    |   NOTE    |
+  +-----------+-----------+-----------+-----------+
+  |                                               |
+  |         (선택된 탭의 콘텐츠 표시/편집)           |
+  |                                               |
+  +-----------------------------------------------+
+
+
+================================================================================
+1. 4가지 콘텐츠 형식 상세
+================================================================================
+
+--- 1-1. FIGMA ---
+  목적: 피그마 디자인 시안 임베드 / 이미지 URL 관리
+  입력: 피그마 임베드 URL 또는 이미지 URL
+  출력: iframe 임베드 또는 이미지 미리보기
+  저장: content 필드에 URL 텍스트 저장
+
+  화면 예시:
+  +-----------------------------------------------+
+  |  피그마 URL:                                    |
+  |  [https://www.figma.com/embed?...         ]    |
+  |  [미리보기 갱신]                                 |
+  |                                                |
+  |  +-------------------------------------------+ |
+  |  |                                           | |
+  |  |         (iframe 피그마 미리보기)            | |
+  |  |          또는 이미지 미리보기               | |
+  |  |                                           | |
+  |  +-------------------------------------------+ |
+  +-----------------------------------------------+
+
+
+--- 1-2. CHECKLIST ---
+  목적: 해당 페이지의 개발 체크리스트 (할 일 목록)
+  입력: 체크 항목 추가/수정/삭제, 체크 토글
+  출력: 체크박스 리스트
+  저장: content 필드에 JSON 배열로 저장
+        [{"text":"API 연동","checked":true},{"text":"UI 구현","checked":false}]
+
+  화면 예시:
+  +-----------------------------------------------+
+  |  개발 체크리스트                                 |
+  |                                                |
+  |  [v] API 엔드포인트 구현                        |
+  |  [v] 프론트 API 연동                            |
+  |  [ ] 에러 핸들링                                |
+  |  [ ] 로딩 스켈레톤 UI                           |
+  |  [ ] 반응형 레이아웃                             |
+  |                                                |
+  |  [+ 항목 추가]                                  |
+  |                                                |
+  |  진행률: 2/5 (40%)                              |
+  |  [===========>                      ] 40%      |
+  +-----------------------------------------------+
+
+
+--- 1-3. MMD (Mermaid) ---
+  목적: 플로우차트, 시퀀스 다이어그램 등 다이어그램 관리
+  입력: Mermaid 문법 텍스트 에디터
+  출력: Mermaid.js로 렌더링된 다이어그램
+  저장: content 필드에 Mermaid 문법 텍스트 저장
+
+  화면 예시:
+  +-----------------------------------------------+
+  |  +-------------------+ +---------------------+|
+  |  | 에디터             | | 미리보기             ||
+  |  |-------------------| |---------------------||
+  |  | graph TD           | |                     ||
+  |  |   A[상품목록] -->   | |   +----------+     ||
+  |  |   B[상품상세]       | |   | 상품목록  |     ||
+  |  |   B --> C[장바구니] | |   +----+-----+     ||
+  |  |   C --> D[결제]     | |        |           ||
+  |  |                    | |   +----v-----+     ||
+  |  |                    | |   | 상품상세  |     ||
+  |  |                    | |   +----+-----+     ||
+  |  |                    | |        |           ||
+  |  |                    | |   +----v-----+     ||
+  |  |                    | |   | 장바구니  |     ||
+  |  |                    | |   +----------+     ||
+  |  +-------------------+ +---------------------+|
+  +-----------------------------------------------+
+
+
+--- 1-4. NOTE ---
+  목적: 자유 형식 메모/문서 (마크다운)
+  입력: 마크다운 텍스트 에디터
+  출력: 마크다운 렌더링 미리보기
+  저장: content 필드에 마크다운 텍스트 저장
+
+  화면 예시:
+  +-----------------------------------------------+
+  |  +-------------------+ +---------------------+|
+  |  | 에디터             | | 미리보기             ||
+  |  |-------------------| |---------------------||
+  |  | ## 상품 목록 페이지 | | 상품 목록 페이지     ||
+  |  |                    | |                     ||
+  |  | ### 요구사항        | | 요구사항             ||
+  |  | - 그리드 레이아웃   | | * 그리드 레이아웃    ||
+  |  | - 카테고리 필터     | | * 카테고리 필터      ||
+  |  | - 가격순 정렬       | | * 가격순 정렬        ||
+  |  |                    | |                     ||
+  |  | ### 참고           | | 참고                 ||
+  |  | Swagger 문서 확인  | | Swagger 문서 확인    ||
+  |  +-------------------+ +---------------------+|
+  +-----------------------------------------------+
+
+
+================================================================================
+2. 도메인 모델 변경
+================================================================================
+
+--- 2-1. SpecType 변경 ---
+
+  [기존] PROJECT, PAGE, REFERENCE, PLAN, CHECKLIST, TEST
+  [변경] PROJECT, PAGE
+
+--- 2-2. ContentType 신규 enum ---
+
+  FIGMA, CHECKLIST, MMD, NOTE
+
+--- 2-3. ProjectDevSpec 엔티티 변경 ---
+
+  기존 content(TEXT) 1개 필드 대신
+  -> 콘텐츠를 별도 테이블로 분리
+
+--- 2-4. DevSpecContent 신규 엔티티 ---
+
+  @Entity
+  DevSpecContent {
+      Long id;
+      ProjectDevSpec devSpec;     // ManyToOne (어떤 PAGE에 속하는지)
+      ContentType contentType;    // FIGMA, CHECKLIST, MMD, NOTE
+      String content;             // TEXT (실제 내용)
+      LocalDateTime createdAt;
+      LocalDateTime updatedAt;
+  }
+
+  - 하나의 PAGE 노드는 최대 4개의 DevSpecContent를 가진다 (형식별 1개씩)
+  - unique constraint: (dev_spec_id, content_type)
+
+
+[테이블 관계]
+
+  project_dev_specs (트리)          dev_spec_contents (콘텐츠)
+  +----+------------------+        +----+---------+----------+---------+
+  | id | name             |        | id | spec_id | type     | content |
+  +----+------------------+        +----+---------+----------+---------+
+  | 1  | DXMall 프로젝트   |        | 1  | 2       | FIGMA    | https..|
+  | 2  | 상품 목록 페이지   |        | 2  | 2       | CHECKLIST| [{...}]|
+  | 3  | 로그인 페이지      |        | 3  | 2       | MMD      | graph..|
+  +----+------------------+        | 4  | 2       | NOTE     | ## 상..|
+                                   | 5  | 3       | CHECKLIST| [{...}]|
+                                   +----+---------+----------+---------+
+
+  project_dev_specs.id = 2 (상품 목록 페이지)
+    -> dev_spec_contents에 4개 row (FIGMA, CHECKLIST, MMD, NOTE)
+
+
+================================================================================
+3. 백엔드 구현 계획
+================================================================================
+
+기존 프로젝트 패턴(product 모듈) 따라서 구현
+
+--- 3-1. domain 레이어 ---
+
+  devspec/domain/
+  ├── ProjectDevSpec.java        [수정] content 필드 제거, children 관계 유지
+  ├── DevSpecContent.java        [신규] 콘텐츠 엔티티
+  ├── SpecType.java              [수정] PROJECT, PAGE 만 남기기
+  ├── SpecStatus.java            [유지] TODO, IN_PROGRESS, DONE
+  ├── ContentType.java           [신규] FIGMA, CHECKLIST, MMD, NOTE
+  └── DevSpecRepository.java     [신규] 도메인 리포지토리 인터페이스
+
+--- 3-2. application 레이어 ---
+
+  devspec/application/
+  ├── DevSpecService.java        [신규] 비즈니스 로직
+  └── dto/
+      ├── CreateProjectRequest.java    [신규] 프로젝트 생성 요청
+      ├── CreatePageRequest.java       [신규] 페이지 생성 요청
+      ├── UpdateContentRequest.java    [신규] 콘텐츠 저장/수정 요청
+      ├── UpdateStatusRequest.java     [신규] 상태 변경 요청
+      ├── UpdateNameRequest.java       [신규] 이름 변경 요청
+      ├── DevSpecTreeResponse.java     [신규] 트리 응답 (재귀 구조)
+      ├── DevSpecDetailResponse.java   [신규] 노드 상세 + 콘텐츠 응답
+      └── DevSpecContentResponse.java  [신규] 콘텐츠 단건 응답
+
+--- 3-3. infrastructure 레이어 ---
+
+  devspec/infrastructure/
+  ├── JpaDevSpecRepository.java        [신규]
+  └── JpaDevSpecContentRepository.java [신규]
+
+--- 3-4. presentation 레이어 ---
+
+  devspec/presentation/
+  └── DevSpecController.java     [신규] REST API
+
+--- 3-5. API 엔드포인트 설계 ---
+
+  # 트리 관련
+  POST   /api/devspec/projects              프로젝트(루트) 생성
+  POST   /api/devspec/projects/{id}/pages    페이지 추가
+  GET    /api/devspec/projects/{id}/tree     프로젝트 트리 전체 조회
+  GET    /api/devspec/{id}                   노드 상세 조회
+  PUT    /api/devspec/{id}/name              이름 변경
+  PUT    /api/devspec/{id}/status            상태 변경
+  DELETE /api/devspec/{id}                   노드 삭제 (cascade)
+  PUT    /api/devspec/{id}/sort              순서 변경
+
+  # 콘텐츠 관련 (PAGE 노드에 대해)
+  GET    /api/devspec/{id}/content/{type}    특정 형식 콘텐츠 조회
+  PUT    /api/devspec/{id}/content/{type}    특정 형식 콘텐츠 저장/수정
+
+  # 목록
+  GET    /api/devspec/projects               전체 프로젝트 목록 조회
+
+--- 3-6. SecurityConfig 수정 ---
+
+  /api/devspec/** -> authenticated (로그인 사용자만)
+
+
+================================================================================
+4. 프론트엔드 구현 계획
+================================================================================
+
+FSD(Feature-Sliced Design) 아키텍처 따라서 구현
+
+--- 4-1. 디렉토리 구조 ---
+
+  src/
+  ├── app/
+  │   ├── App.tsx                          [수정] /devspec 라우트 추가
+  │   └── layouts/
+  │       ├── RootLayout.tsx               [수정] 네비바에 "업무 관리" 메뉴 추가
+  │       └── DevSpecLayout.tsx            [신규] 사이드바 + 콘텐츠 2-panel 레이아웃
+  │
+  ├── pages/
+  │   └── devspec/
+  │       ├── DevSpecPage.tsx              [신규] 메인 페이지 (트리 + 상세)
+  │       └── DevSpecEmptyPage.tsx         [신규] 노드 미선택 시 빈 화면
+  │
+  ├── features/
+  │   └── devspec/
+  │       ├── model/
+  │       │   ├── use-devspec-tree.ts      [신규] 트리 데이터 조회/관리 훅
+  │       │   └── use-devspec-content.ts   [신규] 콘텐츠 CRUD 훅
+  │       └── ui/
+  │           ├── DevSpecTree.tsx          [신규] 왼쪽 사이드바 트리 컴포넌트
+  │           ├── DevSpecDetail.tsx        [신규] 오른쪽 상세 영역 (탭 포함)
+  │           ├── ContentTabs.tsx          [신규] FIGMA|CHECKLIST|MMD|NOTE 탭
+  │           ├── FigmaContent.tsx         [신규] 피그마 임베드 뷰
+  │           ├── ChecklistContent.tsx     [신규] 체크리스트 뷰
+  │           ├── MermaidContent.tsx       [신규] 머메이드 다이어그램 뷰
+  │           └── NoteContent.tsx          [신규] 마크다운 노트 뷰
+  │
+  ├── entities/
+  │   └── devspec/
+  │       └── model/
+  │           └── types.ts                [신규] DevSpec 타입 정의
+  │
+  └── shared/
+      └── (기존 api/client.ts 재활용)
+
+--- 4-2. 라우팅 ---
+
+  /devspec                    -> ProtectedRoute 하위
+  /devspec/:projectId         -> 프로젝트 선택 (트리 로드)
+  /devspec/:projectId/:nodeId -> 특정 노드 상세 보기
+
+--- 4-3. 주요 컴포넌트 상세 ---
+
+  [DevSpecLayout.tsx] - 2-panel 레이아웃
+  +------------------+-----------------------------------------------+
+  |  사이드바 (280px)  |  <Outlet /> (콘텐츠 영역)                     |
+  |  DevSpecTree      |                                              |
+  +------------------+-----------------------------------------------+
+
+  [DevSpecTree.tsx] - 왼쪽 사이드바
+  - 프로젝트 목록 (루트 노드들)
+  - 선택한 프로젝트의 PAGE 목록 (펼치기/접기)
+  - 각 노드 옆에 상태 뱃지 (색상)
+  - [+ 프로젝트 추가] 버튼
+  - [+ 페이지 추가] 버튼 (프로젝트 하위)
+  - 노드 클릭 시 URL 변경 -> 오른쪽 상세 로드
+
+  [DevSpecDetail.tsx] - 오른쪽 상세
+  - PROJECT 노드: 프로젝트 개요 + 하위 PAGE 현황 요약
+  - PAGE 노드: 4개 탭 (FIGMA, CHECKLIST, MMD, NOTE)
+
+  [ContentTabs.tsx] - 탭 전환
+  - 4개 탭 버튼
+  - 선택된 탭에 따라 해당 Content 컴포넌트 렌더링
+  - 탭 전환 시 해당 contentType의 데이터 조회
+
+--- 4-4. 추가 라이브러리 (npm) ---
+
+  mermaid           -> Mermaid.js 다이어그램 렌더링
+  react-markdown    -> 마크다운 렌더링 (NOTE 탭)
+  (기존 Tailwind CSS로 UI 구현, 별도 UI 라이브러리 불필요)
+
+
+================================================================================
+5. 구현 순서 (단계별)
+================================================================================
+
+--- Phase 1: 백엔드 도메인 & API ---
+  1. SpecType 수정 (PROJECT, PAGE만)
+  2. ContentType enum 생성
+  3. DevSpecContent 엔티티 생성
+  4. ProjectDevSpec 엔티티 수정 (content 필드 제거)
+  5. DevSpecRepository 인터페이스 생성
+  6. JpaDevSpecRepository, JpaDevSpecContentRepository 생성
+  7. DTO 생성 (Request/Response records)
+  8. DevSpecService 생성
+  9. DevSpecController 생성
+  10. SecurityConfig에 /api/devspec/** 추가
+
+--- Phase 2: 프론트엔드 기본 구조 ---
+  11. entities/devspec/model/types.ts 타입 정의
+  12. DevSpecLayout.tsx (2-panel 레이아웃)
+  13. App.tsx 라우트 추가
+  14. RootLayout.tsx 네비바 메뉴 추가
+  15. DevSpecTree.tsx (트리 컴포넌트)
+  16. DevSpecDetail.tsx (상세 영역)
+
+--- Phase 3: 프론트엔드 콘텐츠 탭 ---
+  17. ContentTabs.tsx (탭 전환)
+  18. NoteContent.tsx (마크다운 에디터/뷰어)
+  19. ChecklistContent.tsx (체크리스트)
+  20. FigmaContent.tsx (피그마 임베드)
+  21. MermaidContent.tsx (머메이드 다이어그램)
+
+--- Phase 4: 추가 기능 ---
+  22. 트리 노드 CRUD (추가/수정/삭제)
+  23. 상태 변경 기능
+  24. 순서 변경 (드래그 & 드롭은 향후)
+
+
+================================================================================
+6. 데이터 흐름 요약
+================================================================================
+
+  [사용자 동작]                    [API 호출]              [DB]
+
+  업무관리 메뉴 클릭        GET /api/devspec/projects    프로젝트 목록
+       |
+  프로젝트 선택(클릭)       GET /api/devspec/projects    트리 전체
+       |                       /{id}/tree
+  페이지 노드 클릭          GET /api/devspec/{id}        노드 상세
+       |
+  CHECKLIST 탭 클릭         GET /api/devspec/{id}        해당 콘텐츠
+       |                       /content/CHECKLIST
+  체크항목 수정 후 저장      PUT /api/devspec/{id}        콘텐츠 업데이트
+                                /content/CHECKLIST
