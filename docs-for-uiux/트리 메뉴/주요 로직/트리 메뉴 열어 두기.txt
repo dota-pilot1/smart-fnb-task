@@ -1,0 +1,58 @@
+트리 메뉴 기본 열림 상태 설정
+================================
+
+파일: smart-fnb-front/src/features/devspec/ui/DevSpecTree.tsx
+
+
+1. 문제
+-------
+트리 메뉴의 expanded 초기값이 빈 Set이라서
+페이지 진입 시 모든 프로젝트가 닫혀 있었음.
+매번 수동으로 열어야 해서 불편.
+
+
+2. 해결
+-------
+useEffect로 projects가 로드되면 전체 프로젝트 ID를 expanded에 추가.
+
+  useEffect(() => {
+    if (projects.length > 0) {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        projects.forEach((p) => next.add(p.id));
+        return next;
+      });
+    }
+  }, [projects]);
+
+
+3. 왜 초기값이 아니라 useEffect인가?
+--------------------------------------
+- projects는 props로 받지만, 최초 렌더 시점에는 빈 배열 (API 응답 전)
+- useState 초기값은 최초 1회만 실행되므로 빈 Set이 됨
+- useEffect는 projects가 바뀔 때마다 실행 → API 응답 후에도 동작
+
+  흐름:
+  1) 컴포넌트 마운트 → projects = [] → useState 초기값 = 빈 Set
+  2) API 응답 → projects = [프로젝트A, 프로젝트B, ...] → useEffect 실행
+  3) expanded에 모든 프로젝트 ID 추가 → 전부 열린 상태로 렌더링
+
+
+4. 사용자가 닫은 건 유지되는가?
+---------------------------------
+유지됨.
+- prev(기존 Set)을 복사한 뒤 새 프로젝트 ID만 add
+- 사용자가 toggleExpand로 닫은 ID는 이미 Set에서 제거된 상태
+- 단, projects 배열이 바뀌면 (새로고침, 프로젝트 추가 등) 다시 열림
+  → 새 프로젝트가 추가되면 자동으로 열리는 효과도 있음
+
+
+5. 전체 접기/열기 버튼을 추가하려면?
+--------------------------------------
+  const expandAll = () =>
+    setExpanded(new Set(projects.map((p) => p.id)));
+
+  const collapseAll = () =>
+    setExpanded(new Set());
+
+필요하면 헤더 영역에 버튼 추가 가능.

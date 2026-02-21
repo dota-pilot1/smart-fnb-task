@@ -1,6 +1,9 @@
 import { useState, useCallback } from "react";
 import { apiClient } from "@/shared/api/client";
-import type { FigmaLink, CreateFigmaLinkRequest } from "@/entities/devspec/model/types";
+import type {
+  FigmaLink,
+  CreateFigmaLinkRequest,
+} from "@/entities/devspec/model/types";
 
 export function useFigmaLinks(devSpecId: number) {
   const [links, setLinks] = useState<FigmaLink[]>([]);
@@ -10,11 +13,15 @@ export function useFigmaLinks(devSpecId: number) {
   const fetchLinks = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiClient<FigmaLink[]>(`/api/devspec/${devSpecId}/figma-links`);
+      const data = await apiClient<FigmaLink[]>(
+        `/api/devspec/${devSpecId}/figma-links`,
+      );
       setLinks(data);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Figma 링크를 불러올 수 없습니다.");
+      setError(
+        e instanceof Error ? e.message : "Figma 링크를 불러올 수 없습니다.",
+      );
     } finally {
       setLoading(false);
     }
@@ -35,5 +42,28 @@ export function useFigmaLinks(devSpecId: number) {
     await fetchLinks();
   };
 
-  return { links, loading, error, fetchLinks, createLink, deleteLink };
+  const fetchLink = async (linkId: number) => {
+    return apiClient<FigmaLink>(`/api/devspec/figma-links/${linkId}`);
+  };
+
+  const saveChecklist = async (linkId: number, content: string) => {
+    return apiClient<FigmaLink>(
+      `/api/devspec/figma-links/${linkId}/checklist`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      },
+    );
+  };
+
+  return {
+    links,
+    loading,
+    error,
+    fetchLinks,
+    createLink,
+    deleteLink,
+    fetchLink,
+    saveChecklist,
+  };
 }

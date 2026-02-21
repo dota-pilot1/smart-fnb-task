@@ -163,7 +163,7 @@ export function FigmaContent({ devSpecId }: FigmaContentProps) {
               key={link.id}
               title={link.title}
               description={link.description}
-              onClick={() => window.open(link.url, "_blank")}
+              onClick={() => window.open(`/devspec/figma/${link.id}`, "_blank")}
               onDelete={() => deleteLink(link.id)}
             />
           ))}

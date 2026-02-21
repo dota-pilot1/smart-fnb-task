@@ -1,13 +1,12 @@
 package com.smartfnb.devspec.domain;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "figma_links")
@@ -32,6 +31,9 @@ public class FigmaLink {
     @Column(nullable = false, length = 1000)
     private String url;
 
+    @Column(columnDefinition = "TEXT")
+    private String checklist;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
@@ -39,12 +41,21 @@ public class FigmaLink {
     @UpdateTimestamp
     private LocalDateTime updatedAt;
 
-    public static FigmaLink create(ProjectDevSpec devSpec, String title, String description, String url) {
+    public static FigmaLink create(
+        ProjectDevSpec devSpec,
+        String title,
+        String description,
+        String url
+    ) {
         FigmaLink link = new FigmaLink();
         link.devSpec = devSpec;
         link.title = title;
         link.description = description;
         link.url = url;
         return link;
+    }
+
+    public void updateChecklist(String checklist) {
+        this.checklist = checklist;
     }
 }

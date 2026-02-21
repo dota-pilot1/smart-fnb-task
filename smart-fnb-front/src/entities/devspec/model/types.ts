@@ -23,6 +23,7 @@ export interface FigmaLink {
   title: string;
   description: string;
   url: string;
+  checklist: string;
   createdAt: string;
 }
 

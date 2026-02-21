@@ -146,6 +146,33 @@ public class DevSpecService {
             .toList();
     }
 
+    public FigmaLinkResponse findFigmaLink(Long linkId) {
+        FigmaLink link = figmaLinkRepository
+            .findById(linkId)
+            .orElseThrow(() ->
+                new IllegalArgumentException(
+                    "존재하지 않는 Figma 링크입니다. id=" + linkId
+                )
+            );
+        return FigmaLinkResponse.from(link);
+    }
+
+    @Transactional
+    public FigmaLinkResponse updateFigmaLinkChecklist(
+        Long linkId,
+        UpdateContentRequest request
+    ) {
+        FigmaLink link = figmaLinkRepository
+            .findById(linkId)
+            .orElseThrow(() ->
+                new IllegalArgumentException(
+                    "존재하지 않는 Figma 링크입니다. id=" + linkId
+                )
+            );
+        link.updateChecklist(request.content());
+        return FigmaLinkResponse.from(link);
+    }
+
     @Transactional
     public void deleteFigmaLink(Long linkId) {
         figmaLinkRepository

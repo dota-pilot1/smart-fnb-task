@@ -96,6 +96,23 @@ public class DevSpecController {
         return ResponseEntity.ok(devSpecService.findFigmaLinks(id));
     }
 
+    @GetMapping("/figma-links/{linkId}")
+    public ResponseEntity<FigmaLinkResponse> findFigmaLink(
+        @PathVariable Long linkId
+    ) {
+        return ResponseEntity.ok(devSpecService.findFigmaLink(linkId));
+    }
+
+    @PutMapping("/figma-links/{linkId}/checklist")
+    public ResponseEntity<FigmaLinkResponse> updateFigmaLinkChecklist(
+        @PathVariable Long linkId,
+        @RequestBody UpdateContentRequest request
+    ) {
+        return ResponseEntity.ok(
+            devSpecService.updateFigmaLinkChecklist(linkId, request)
+        );
+    }
+
     @DeleteMapping("/{id}/figma-links/{linkId}")
     public ResponseEntity<Void> deleteFigmaLink(
         @PathVariable Long id,

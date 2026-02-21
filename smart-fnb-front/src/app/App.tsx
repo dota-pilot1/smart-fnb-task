@@ -7,6 +7,7 @@ import { ProductListPage } from "@/pages/products/ProductListPage";
 import { ProductDetailPage } from "@/pages/product-detail/ProductDetailPage";
 import { ProtectedRoute } from "@/shared/ui/ProtectedRoute";
 import { DevSpecPage } from "@/pages/devspec/DevSpecPage";
+import { FigmaDetailPage } from "@/pages/figma-detail/FigmaDetailPage";
 
 export function App() {
   return (
@@ -20,6 +21,7 @@ export function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route path="devspec" element={<DevSpecPage />} />
+          <Route path="devspec/figma/:linkId" element={<FigmaDetailPage />} />
         </Route>
       </Route>
     </Routes>
