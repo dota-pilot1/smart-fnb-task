@@ -1,0 +1,80 @@
+Smart F&B 프로젝트 실행 방법
+==============================
+
+
+========================================
+전체 실행 순서
+========================================
+
+  1. DB 실행 (Docker)
+  2. 백엔드 실행 (Spring Boot)
+  3. 프론트엔드 실행 (Vite)
+
+
+========================================
+1. DB 실행 (PostgreSQL - Docker)
+========================================
+
+  cd smart-fnb-backend
+  docker compose up -d
+
+  접속 정보:
+    호스트: localhost
+    포트: 5432
+    DB명: mydatabase
+    유저: myuser
+    비밀번호: secret
+
+  상태 확인:
+    docker compose ps
+
+  중지:
+    docker compose down
+
+
+========================================
+2. 백엔드 실행 (Spring Boot)
+========================================
+
+  cd smart-fnb-backend
+  ./gradlew bootRun
+
+  실행 확인:
+    http://localhost:8080/swagger-ui/index.html
+
+  포트 충돌 시 (이미 8080 사용 중):
+    lsof -ti:8080 | xargs kill -9
+    ./gradlew bootRun
+
+
+========================================
+3. 프론트엔드 실행 (Vite + React)
+========================================
+
+  cd smart-fnb-front
+  npm run dev
+
+  실행 확인:
+    http://localhost:5173
+
+  API 프록시 설정됨:
+    프론트 /api/* → 백엔드 http://localhost:8080 으로 자동 전달
+
+
+========================================
+한 번에 실행 (터미널 3개)
+========================================
+
+  터미널1: cd smart-fnb-backend && docker compose up -d
+  터미널2: cd smart-fnb-backend && ./gradlew bootRun
+  터미널3: cd smart-fnb-front && npm run dev
+
+
+========================================
+접속 URL 정리
+========================================
+
+  프론트엔드:  http://localhost:5173
+  백엔드 API:  http://localhost:8080
+  Swagger UI:  http://localhost:8080/swagger-ui/index.html
+  PostgreSQL:  localhost:5432
