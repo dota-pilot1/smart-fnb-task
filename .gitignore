@@ -10,12 +10,12 @@
 .claude/
 
 # Java / Gradle
-dxmall-server/.gradle/
-dxmall-server/build/
-dxmall-server/bin/
-dxmall-server/out/
+smart-fnb-backend/.gradle/
+smart-fnb-backend/build/
+smart-fnb-backend/bin/
+smart-fnb-backend/out/
 
 # Node / Frontend
-dxmall-frontend/node_modules/
-dxmall-frontend/dist/
-dxmall-frontend/.tmp/
+smart-fnb-front/node_modules/
+smart-fnb-front/dist/
+smart-fnb-front/.tmp/

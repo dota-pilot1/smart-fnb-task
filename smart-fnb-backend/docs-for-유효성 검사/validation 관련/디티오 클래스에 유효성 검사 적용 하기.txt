@@ -1,0 +1,43 @@
+예를 들자
+=========
+
+package com.smartfnb.user.application.dto;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public record SignupRequest(
+    @NotBlank(message = "이메일은 필수입니다.")
+    @Email(message = "올바른 이메일 형식이 아닙니다.")
+    @Schema(example = "terecal@daum.net")
+    String email,
+
+    @NotBlank(message = "비밀번호는 필수입니다.")
+    @Size(min = 8, message = "비밀번호는 8자 이상이어야 합니다.")
+    @Schema(example = "terecal")
+    String password,
+
+    @NotBlank(message = "이름은 필수입니다.")
+    @Schema(example = "terecal")
+    String name
+) {}
+
+
+=====
+
+여기서 디티오 클래스 칼럼에 붙은 어노테이션들은 유효성 검사를 내부적으로 수행한다는 의미이며
+build.gradle`에 추가한 `spring-boot-starter-validation`이 이 Jakarta Validation을 사용할 수 있게 해주는 의존성입니다.
+
+총정리:
+JPA도 스프링도 아닙니다. **Jakarta Validation(Bean Validation)** 표준입니다.
+
+| 어노테이션 | 소속 | 역할 |
+|-----------|------|------|
+| `@Schema` | Swagger (springdoc) | Swagger UI 예시값 표시 |
+| `@NotBlank` | Jakarta Validation | 빈 문자열/null 방지 |
+| `@Email` | Jakarta Validation | 이메일 형식 검증 |
+| `@Size` | Jakarta Validation | 길이 제한 검증 |
+
+Jakarta Validation은 스프링이나 JPA에 종속된 게 아니라 **Java 표준 검증 스펙**입니다. 컨트롤러에서 `@Valid`를 붙이면 스프링이 이 어노테이션들을 읽고 자동으로 검증을 실행해주는 구조입니다.

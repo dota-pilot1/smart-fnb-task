@@ -9,7 +9,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   프로젝트명 : DXShop (Digital Experience Shop)
-  구성       : dxmall-frontend (Vite + React) + dxmall-server (Spring Boot 3)
+  구성       : smart-fnb-front (Vite + React) + smart-fnb-backend (Spring Boot 3)
   핵심 목표  : "현업에서 쓰는 기술 스택을 직접 구현해보며 깊이 있게 이해한다"
 
   이 계획서는 단순 To-Do가 아닌, 각 기능이 왜 필요한지·어떻게 배울지를
@@ -376,7 +376,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   dxshop-container/
-  ├── dxmall-frontend/        ← Vite + React (FSD 구조 적용됨)
+  ├── smart-fnb-front/        ← Vite + React (FSD 구조 적용됨)
   │   └── src/
   │       ├── app/            ← 라우터, 전역 설정
   │       ├── pages/          ← 페이지 컴포넌트
@@ -384,7 +384,7 @@
   │       ├── entities/       ← 도메인 엔티티 (상품, 주문 등)
   │       └── shared/         ← 디자인 시스템, 공통 유틸
   │
-  ├── dxmall-server/          ← Spring Boot 3 백엔드
+  ├── smart-fnb-backend/          ← Spring Boot 3 백엔드
   │   └── src/main/java/
   │       ├── domain/         ← 핵심 비즈니스 로직
   │       ├── application/    ← 유스케이스, 서비스
