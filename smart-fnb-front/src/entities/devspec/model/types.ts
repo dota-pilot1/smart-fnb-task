@@ -18,6 +18,20 @@ export interface DevSpecContent {
   content: string;
 }
 
+export interface FigmaLink {
+  id: number;
+  title: string;
+  description: string;
+  url: string;
+  createdAt: string;
+}
+
+export interface CreateFigmaLinkRequest {
+  title: string;
+  description: string;
+  url: string;
+}
+
 export interface DevSpecDetail {
   id: number;
   name: string;

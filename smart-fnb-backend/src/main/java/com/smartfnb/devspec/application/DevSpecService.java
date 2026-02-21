@@ -14,6 +14,7 @@ public class DevSpecService {
 
     private final DevSpecRepository devSpecRepository;
     private final DevSpecContentRepository devSpecContentRepository;
+    private final FigmaLinkRepository figmaLinkRepository;
 
     @Transactional
     public DevSpecTreeResponse createProject(CreateProjectRequest request) {
@@ -118,6 +119,43 @@ public class DevSpecService {
                 return devSpecContentRepository.save(newContent);
             });
         return DevSpecContentResponse.from(content);
+    }
+
+    @Transactional
+    public FigmaLinkResponse createFigmaLink(
+        Long devSpecId,
+        CreateFigmaLinkRequest request
+    ) {
+        ProjectDevSpec spec = findSpecOrThrow(devSpecId);
+        FigmaLink link = FigmaLink.create(
+            spec,
+            request.title(),
+            request.description(),
+            request.url()
+        );
+        figmaLinkRepository.save(link);
+        return FigmaLinkResponse.from(link);
+    }
+
+    public List<FigmaLinkResponse> findFigmaLinks(Long devSpecId) {
+        ProjectDevSpec spec = findSpecOrThrow(devSpecId);
+        return figmaLinkRepository
+            .findByDevSpec(spec)
+            .stream()
+            .map(FigmaLinkResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public void deleteFigmaLink(Long linkId) {
+        figmaLinkRepository
+            .findById(linkId)
+            .orElseThrow(() ->
+                new IllegalArgumentException(
+                    "존재하지 않는 Figma 링크입니다. id=" + linkId
+                )
+            );
+        figmaLinkRepository.deleteById(linkId);
     }
 
     private ProjectDevSpec findSpecOrThrow(Long id) {
