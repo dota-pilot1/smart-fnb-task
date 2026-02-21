@@ -76,7 +76,7 @@ export function DevSpecTree({
   };
 
   return (
-    <div className="w-72 border-r border-gray-200 bg-white h-full flex flex-col">
+    <div className="border-r border-gray-200 bg-white h-full flex flex-col">
       <div className="p-3 border-b border-gray-200 flex items-center justify-between">
         <span className="text-sm font-semibold text-gray-900">업무 관리</span>
         <button

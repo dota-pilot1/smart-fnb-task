@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { apiClient } from "@/shared/api/client";
+import { usePersistedState } from "@/shared/lib/use-persisted-state";
+import { toast } from "sonner";
 import type { FigmaLink } from "@/entities/devspec/model/types";
 import { ChecklistContent } from "@/features/devspec/ui/ChecklistContent";
 
@@ -9,8 +11,13 @@ export function FigmaDetailPage() {
   const navigate = useNavigate();
   const [link, setLink] = useState<FigmaLink | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sideWidth, setSideWidth] = useState(320);
+  const [persistedWidth, setPersistedWidth] = usePersistedState(
+    "figma-side-width",
+    320,
+  );
+  const [sideWidth, setSideWidth] = useState(persistedWidth);
   const isResizing = useRef(false);
+  const widthRef = useRef(sideWidth);
 
   const fetchLink = useCallback(async () => {
     if (!linkId) return;
@@ -34,14 +41,22 @@ export function FigmaDetailPage() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing.current) return;
-      const newWidth = window.innerWidth - e.clientX;
-      setSideWidth(Math.min(600, Math.max(200, newWidth)));
+      const newWidth = Math.min(
+        600,
+        Math.max(200, window.innerWidth - e.clientX),
+      );
+      widthRef.current = newWidth;
+      setSideWidth(newWidth);
     };
 
     const handleMouseUp = () => {
-      isResizing.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      if (isResizing.current) {
+        isResizing.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        setPersistedWidth(widthRef.current);
+        toast("패널 너비가 저장되었습니다");
+      }
     };
 
     document.addEventListener("mousemove", handleMouseMove);

@@ -1,0 +1,45 @@
+사이드바 너비 localStorage 저장 구현 계획
+==========================================
+
+목표: 사이드바 드래그로 조절한 너비가 새로고침해도 유지
+
+
+1. 현재 상태
+-------------
+  파일: smart-fnb-front/src/pages/figma-detail/FigmaDetailPage.tsx
+
+  const [sideWidth, setSideWidth] = useState(320);
+  → 새로고침하면 항상 320px로 초기화됨
+
+
+2. 구현 방법
+-------------
+  localStorage에 너비를 저장/복원.
+
+  읽기 (초기값):
+    const [sideWidth, setSideWidth] = useState(() => {
+      const saved = localStorage.getItem("figma-side-width");
+      return saved ? Number(saved) : 320;
+    });
+
+  쓰기 (드래그 끝날 때):
+    mouseup 이벤트에서 현재 너비를 localStorage에 저장
+    → mousemove마다 저장하면 초당 수십 회 쓰기 → 비효율
+    → mouseup (드래그 종료) 시 1회만 저장이 적합
+
+
+3. 변경 파일
+-------------
+  FigmaDetailPage.tsx 1개만 수정
+
+  변경 포인트 2곳:
+  (1) useState 초기값 → localStorage에서 읽기
+  (2) handleMouseUp → localStorage에 저장
+
+
+4. 왜 tanstack-store가 아니라 localStorage 직접인가?
+-----------------------------------------------------
+  - 이 너비는 FigmaDetailPage에서만 사용
+  - 전역 상태로 공유할 대상이 없음
+  - localStorage 2줄이면 끝나는데 store 파일 만들면 과함
+  - 나중에 다른 UI 설정도 저장할 일이 생기면 그때 store로 통합

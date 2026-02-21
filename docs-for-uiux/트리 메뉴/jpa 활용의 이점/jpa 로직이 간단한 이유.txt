@@ -94,3 +94,25 @@ JPA 트리 조회 로직이 간단한 이유
 
   트리 구조 같은 자기 참조 관계에서는 JPA가 압도적으로 편함.
   코드량 차이: MyBatis 10줄+ vs JPA 3줄
+
+
+5. 결국 이 한 줄이 되냐 안 되냐의 차이
+-----------------------------------------
+
+  JPA:
+    spec.getChildren().stream()
+        .map(DevSpecTreeResponse::from)   // ← 재귀 호출
+        .toList()
+
+    → spec.getChildren()이 DB 쿼리를 자동 실행
+    → 자식 엔티티도 살아있는 객체 → 또 getChildren() 가능
+    → 재귀가 자연스럽게 동작
+
+  MyBatis:
+    spec.getChildren()   // ← null 또는 빈 리스트. DB 연결이 없음.
+    // 객체가 그냥 데이터 덩어리라서 자식을 알 방법이 없음
+    // 그래서 직접 groupBy + 조립 코드를 짜야 함
+
+  핵심:
+    entity.getChildren()이 DB 쿼리를 자동 실행하느냐 아니냐
+    이 한 가지 차이가 코드량 전체를 결정함
