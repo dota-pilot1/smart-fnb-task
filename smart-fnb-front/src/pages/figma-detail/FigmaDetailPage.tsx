@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { apiClient } from "@/shared/api/client";
 import type { FigmaLink } from "@/entities/devspec/model/types";
@@ -9,6 +9,8 @@ export function FigmaDetailPage() {
   const navigate = useNavigate();
   const [link, setLink] = useState<FigmaLink | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sideWidth, setSideWidth] = useState(320);
+  const isResizing = useRef(false);
 
   const fetchLink = useCallback(async () => {
     if (!linkId) return;
@@ -28,6 +30,33 @@ export function FigmaDetailPage() {
   useEffect(() => {
     fetchLink();
   }, [fetchLink]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return;
+      const newWidth = window.innerWidth - e.clientX;
+      setSideWidth(Math.min(600, Math.max(200, newWidth)));
+    };
+
+    const handleMouseUp = () => {
+      isResizing.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  const handleMouseDown = () => {
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
 
   const handleSaveChecklist = async (content: string) => {
     if (!linkId) return;
@@ -85,19 +114,29 @@ export function FigmaDetailPage() {
         </a>
       </div>
 
-      {/* 본문: 좌 iframe + 우 체크리스트 */}
+      {/* 본문: 좌 iframe + 드래그 바 + 우 체크리스트 */}
       <div className="flex flex-1 min-h-0">
         {/* Figma iframe */}
         <div className="flex-1 bg-gray-100">
           <iframe
             src={embedUrl}
             className="w-full h-full border-none"
+            style={{ pointerEvents: isResizing.current ? "none" : "auto" }}
             allowFullScreen
           />
         </div>
 
+        {/* 드래그 핸들 */}
+        <div
+          onMouseDown={handleMouseDown}
+          className="w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors shrink-0"
+        />
+
         {/* 사이드 체크리스트 */}
-        <div className="w-80 border-l border-gray-200 bg-white overflow-y-auto">
+        <div
+          className="border-l border-gray-200 bg-white overflow-y-auto shrink-0"
+          style={{ width: sideWidth }}
+        >
           <div className="px-4 py-3 border-b border-gray-200">
             <h3 className="text-sm font-semibold text-gray-700">체크리스트</h3>
           </div>

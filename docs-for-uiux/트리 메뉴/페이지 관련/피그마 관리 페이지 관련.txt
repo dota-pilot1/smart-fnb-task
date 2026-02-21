@@ -1,0 +1,65 @@
+피그마 디테일 페이지 - 사이드 패널 사이즈 조절
+================================================
+
+1. 구현 방법
+------------
+마우스 드래그로 구현 (라이브러리 불필요)
+
+  원리:
+  - 사이드 패널 왼쪽 경계에 드래그 핸들 (4px 정도) 배치
+  - mousedown → mousemove → mouseup 이벤트로 너비 계산
+  - 최소/최대 너비 제한 (예: 200px ~ 600px)
+
+  핵심 코드 흐름:
+  1) 드래그 핸들에 mousedown 이벤트 등록
+  2) mousemove에서 마우스 X좌표로 새 너비 계산
+     → sideWidth = window.innerWidth - e.clientX
+  3) mouseup에서 드래그 종료
+  4) 계산된 너비를 state에 반영
+
+
+2. tanstack-store로 상태 저장
+------------------------------
+조절된 너비를 tanstack-store에 저장하면:
+  - 같은 세션 내에서 다른 Figma 링크 열어도 너비 유지
+  - localStorage 연동 시 브라우저 재시작 후에도 유지
+
+  예시 구조:
+  // shared/model/ui-store.ts
+  import { Store } from "@tanstack/store";
+
+  const STORAGE_KEY = "smart-fnb-ui";
+
+  function loadFromStorage() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : {};
+  }
+
+  export const uiStore = new Store({
+    figmaSideWidth: loadFromStorage().figmaSideWidth ?? 320,
+  });
+
+  // 변경 시 localStorage에도 저장
+  uiStore.subscribe(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(uiStore.state));
+  });
+
+  사용:
+  - 읽기: uiStore.state.figmaSideWidth
+  - 쓰기: uiStore.setState((prev) => ({ ...prev, figmaSideWidth: newWidth }))
+
+
+3. 왜 tanstack-store가 적합한가?
+----------------------------------
+- 이미 프로젝트에서 사용 중 (세션 관리 등)
+- UI 설정은 전역 상태 → 컴포넌트 간 공유 자연스러움
+- localStorage 연동이 간단
+- React 외부 상태라 리렌더 최소화 (드래그 중 성능 유리)
+
+
+4. 구현 순서
+-----------
+Step 1. uiStore 생성 (figmaSideWidth 관리)
+Step 2. FigmaDetailPage에서 드래그 핸들 + 리사이즈 로직 추가
+Step 3. sideWidth를 uiStore에서 읽고/쓰기
+Step 4. localStorage 연동으로 영속성 확보
