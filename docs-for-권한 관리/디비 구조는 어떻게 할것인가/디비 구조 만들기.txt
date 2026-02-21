@@ -1,0 +1,171 @@
+============================================================
+  DXMall 조직도 + 권한 관리 DB 설계
+============================================================
+
+[현재 상태]
+- users 테이블: id, email, password, name, role(USER/ADMIN), created_at, updated_at
+- role은 단순 Enum (USER, ADMIN) → users 테이블 컬럼에 직접 저장
+
+============================================================
+
+[설계 방향]
+조직(부서)을 트리 구조로 관리하고, 사용자를 조직에 배치하며,
+조직 단위 또는 개인 단위로 권한(역할)을 부여하는 구조.
+
+============================================================
+
+[테이블 설계]
+
+1. departments (조직/부서)
+------------------------------------------------------------
+컬럼              타입            설명
+------------------------------------------------------------
+id               BIGINT PK      자동 증가
+name             VARCHAR(100)   부서명 (예: "본사", "개발팀", "마케팅팀")
+parent_id        BIGINT FK      상위 부서 ID (NULL이면 최상위)
+sort_order       INT            같은 레벨 내 정렬 순서
+depth            INT            트리 깊이 (0=루트, 1=1단계...)
+created_at       TIMESTAMP      생성일
+updated_at       TIMESTAMP      수정일
+------------------------------------------------------------
+* 셀프 참조: parent_id → departments.id
+* 유니크 제약: (parent_id, name) — 같은 부서 아래 동일 이름 방지
+
+트리 예시:
+  DXMall (depth=0)
+  ├── 경영지원 (depth=1)
+  │   ├── 인사팀 (depth=2)
+  │   └── 재무팀 (depth=2)
+  ├── 개발본부 (depth=1)
+  │   ├── 백엔드팀 (depth=2)
+  │   └── 프론트팀 (depth=2)
+  └── 영업본부 (depth=1)
+      ├── 국내영업 (depth=2)
+      └── 해외영업 (depth=2)
+
+
+2. users (기존 테이블 수정)
+------------------------------------------------------------
+컬럼              타입            설명
+------------------------------------------------------------
+id               BIGINT PK      자동 증가
+email            VARCHAR        이메일 (유니크)
+password         VARCHAR        암호화된 비밀번호
+name             VARCHAR        이름
+department_id    BIGINT FK      소속 부서 (NULL 허용 = 미배치)
+position         VARCHAR(50)    직급 (예: "팀장", "과장", "사원")
+role             VARCHAR        시스템 역할 (USER, ADMIN) ← 기존 유지
+created_at       TIMESTAMP      생성일
+updated_at       TIMESTAMP      수정일
+------------------------------------------------------------
+* department_id → departments.id
+* role은 시스템 접근 권한 (ADMIN=관리기능 접근 가능)
+* position은 조직 내 직급 (표시용)
+
+
+============================================================
+
+[관계 정리]
+
+departments 1 ──── N departments   (셀프 참조, 상위-하위)
+departments 1 ──── N users         (부서-소속원)
+
+============================================================
+
+[핵심 자바 구현 포인트]
+
+1. Department 엔티티 (셀프 참조)
+   @ManyToOne  → parent (상위 부서)
+   @OneToMany  → children (하위 부서 목록)
+   @OneToMany  → members (소속 사용자 목록)
+
+2. 트리 조회 API
+   - 전체 트리를 한 번에 조회: findAll() 후 메모리에서 트리 구성
+   - 또는 루트 조회 + children LAZY 로딩
+   - 추천: 전체 조회 후 자바에서 재귀 빌드 (데이터 수가 적으므로)
+
+3. 트리 응답 DTO (재귀 구조)
+   DepartmentTreeResponse {
+       Long id
+       String name
+       int depth
+       int sortOrder
+       List<DepartmentTreeResponse> children  ← 재귀
+       List<MemberResponse> members
+   }
+
+4. User 엔티티 수정
+   - department 필드 추가 (@ManyToOne)
+   - position 필드 추가
+
+============================================================
+
+[API 설계]
+
+조직 관리 (ADMIN 전용):
+  GET    /api/admin/departments/tree     전체 조직도 트리 조회
+  POST   /api/admin/departments          부서 생성
+  PUT    /api/admin/departments/{id}     부서 수정 (이름, 정렬순서)
+  DELETE /api/admin/departments/{id}     부서 삭제 (하위 없을 때만)
+  PUT    /api/admin/departments/{id}/move  부서 이동 (상위 부서 변경)
+
+멤버 관리 (ADMIN 전용):
+  GET    /api/admin/members                    전체 사용자 목록
+  PUT    /api/admin/members/{id}/department     사용자 부서 배치/이동
+  PUT    /api/admin/members/{id}/role           사용자 권한 변경 (USER↔ADMIN)
+  PUT    /api/admin/members/{id}/position       사용자 직급 변경
+
+============================================================
+
+[프론트엔드 트리 UI]
+
+1. 좌측: 트리 메뉴
+   - 부서를 펼치기/접기 가능
+   - 부서 클릭 → 우측에 소속 멤버 표시
+   - 부서 우클릭 → 컨텍스트 메뉴 (하위 부서 추가, 이름 변경, 삭제)
+
+2. 우측: 선택된 부서의 멤버 테이블
+   - 이름, 이메일, 직급, 권한 표시
+   - 권한 드롭다운으로 USER/ADMIN 변경
+   - 직급 수정 가능
+
+3. 미배치 사용자
+   - 트리 하단에 "미배치" 영역 → department_id가 NULL인 사용자
+   - 드래그앤드롭 또는 버튼으로 부서 배치
+
+============================================================
+
+[구현 순서 (추천)]
+
+Phase 1 - 백엔드 조직도
+  1) Department 엔티티 + Repository
+  2) User 엔티티에 department, position 추가
+  3) DepartmentService (CRUD + 트리 빌드)
+  4) AdminDepartmentController
+  5) AdminMemberController (부서 배치, 권한 변경)
+
+Phase 2 - 프론트엔드 트리 UI
+  6) 트리 컴포넌트 (재귀 렌더링)
+  7) 컨텍스트 메뉴 (우클릭)
+  8) 멤버 테이블 + 권한/직급 변경
+  9) 조직 관리 페이지 조합
+
+Phase 3 - 상품 등록 연동
+  10) ADMIN 권한 체크 후 상품 등록 UI 활성화
+
+============================================================
+
+[설계 결정 이유]
+
+Q: 왜 별도 권한 테이블(roles, user_roles)을 안 만드나?
+A: 현재 역할이 USER/ADMIN 2개뿐이라 Enum으로 충분.
+   나중에 MANAGER, SELLER 등 추가되면 그때 roles 테이블 분리.
+
+Q: 왜 depth 컬럼을 두나?
+A: 프론트에서 들여쓰기 계산 없이 바로 사용 가능.
+   부서 이동 시 하위 전체의 depth도 갱신해야 하는 비용이 있지만,
+   조직 변경은 빈도가 낮아 괜찮음.
+
+Q: sort_order는 왜 필요한가?
+A: 같은 레벨의 부서 순서를 사용자가 지정할 수 있도록.
+   없으면 이름순 정렬만 가능.

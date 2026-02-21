@@ -1,0 +1,22 @@
+인프라스트럭처 계층이란?
+
+외부 기술/시스템과의 연결을 담당하는 계층이다.
+비즈니스 로직(domain)이 "무엇을 한다"를 정의하면,
+인프라스트럭처는 "어떤 기술로 한다"를 구현한다.
+
+예시:
+- DB 접근: JPA, JDBC, MyBatis
+- 외부 API 호출: 결제 API, 알림 서비스
+- 파일 저장: S3, 로컬 파일시스템
+- 메시지 큐: Kafka, RabbitMQ
+
+JPA의 경우:
+- Java 객체(Entity)를 기반으로 DB 테이블을 매핑하고,
+  SQL을 직접 작성하지 않고도 CRUD를 수행하는 ORM 기술이다.
+- 예: User 엔티티를 정의하면 JPA가 PostgreSQL의 users 테이블에
+  자동으로 INSERT, SELECT, UPDATE, DELETE를 실행해준다.
+
+도메인과 분리하는 이유:
+- domain: "유저를 저장/조회할 수 있어야 한다" (인터페이스)
+- infrastructure: "JPA + PostgreSQL로 저장한다" (구현체)
+- 기술이 바뀌어도 domain 코드는 수정하지 않아도 된다.

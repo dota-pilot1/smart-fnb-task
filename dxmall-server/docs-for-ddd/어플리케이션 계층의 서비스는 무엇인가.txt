@@ -1,0 +1,18 @@
+도메인 규칙에 기반한 유스 케이스 실행에 대한 제어 내지는 실행 로직을 정의
+=======================================================================
+user/
+├── domain/          # 비즈니스 로직이 여기에 집중
+│   ├── Email.java         # VO - 이메일 형식 자체 검증
+│   ├── Password.java      # VO - 암호화/매칭 로직 보유
+│   ├── Role.java          # Enum
+│   ├── User.java          # Aggregate Root - 정적 팩토리 메서드
+│   └── UserRepository.java # 도메인 인터페이스
+├── application/     # 유스케이스 오케스트레이션만
+│   ├── AuthService.java
+│   └── dto/
+├── infrastructure/  # JPA 구현체
+│   └── JpaUserRepository.java
+└── presentation/    # REST Controller
+    └── AuthController.java
+
+======================================================================

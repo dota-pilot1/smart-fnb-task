@@ -1,0 +1,21 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+
+# Claude
+.claude/
+
+# Java / Gradle
+dxmall-server/.gradle/
+dxmall-server/build/
+dxmall-server/bin/
+dxmall-server/out/
+
+# Node / Frontend
+dxmall-frontend/node_modules/
+dxmall-frontend/dist/
+dxmall-frontend/.tmp/

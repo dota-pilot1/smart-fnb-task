@@ -1,0 +1,182 @@
+========================================
+DXMall 구현 기반 스프링 시큐리티 학습 포인트
+========================================
+
+현재 dxmall-server에 구현된 코드를 기준으로,
+확실히 이해하고 있어야 하는 핵심 포인트들을 정리한다.
+
+
+────────────────────────────────────────
+[A] SecurityFilterChain - 전체 보안 설정의 중심
+────────────────────────────────────────
+
+1. SecurityFilterChain이 하는 일
+   - Spring Security의 모든 보안 규칙을 하나의 Bean으로 정의하는 곳
+   - HttpSecurity 빌더를 통해 CSRF, 세션, 인가, 필터 등을 체이닝으로 설정
+   - 우리 코드: SecurityConfig.filterChain() 메서드
+   - 핵심: http.build()를 호출해야 SecurityFilterChain 객체가 생성된다
+
+2. CSRF 비활성화를 하는 이유
+   - CSRF(Cross-Site Request Forgery)는 쿠키 기반 세션에서 의미 있는 방어
+   - 우리는 JWT를 Authorization 헤더로 보내므로 CSRF 공격이 불가능
+   - 따라서 csrf.disable()이 안전하다
+   - 만약 쿠키에 JWT를 담는 방식으로 바꾸면 CSRF를 다시 켜야 한다
+
+3. SessionCreationPolicy.STATELESS의 의미
+   - 서버가 HttpSession을 절대 생성하지도, 사용하지도 않겠다는 선언
+   - 매 요청마다 JWT로 인증을 새로 확인 → 서버가 상태를 안 가짐
+   - 이게 REST API + JWT 조합의 핵심 원칙
+   - STATELESS가 아니면 로그인 후 세션이 남아서 JWT 없이도 인증될 수 있다
+
+4. authorizeHttpRequests - 인가(Authorization) 규칙
+   - permitAll(): 인증 없이 누구나 접근 가능
+   - authenticated(): 유효한 인증이 있어야 접근 가능
+   - 규칙은 위에서 아래로 매칭되므로 순서가 중요하다
+   - 우리 코드에서 /api/auth/**, /actuator/**, /swagger-ui/** → permitAll
+   - 나머지 전부 → authenticated
+   - anyRequest().authenticated()는 반드시 마지막에 와야 한다
+
+
+────────────────────────────────────────
+[B] JWT 인증 - 토큰 생성과 검증
+────────────────────────────────────────
+
+5. JWT의 구조 (Header.Payload.Signature)
+   - Header: 알고리즘 정보 (HS256 등)
+   - Payload: Claims - subject(email), role, issuedAt, expiration
+   - Signature: Header + Payload를 SecretKey로 서명한 값
+   - 서명 덕분에 토큰이 변조되면 검증에서 실패한다
+   - 우리 코드: JwtProvider.generateToken()에서 이 세 부분이 만들어진다
+
+6. SecretKey 관리
+   - app.jwt.secret에 Base64 인코딩된 키를 저장
+   - Keys.hmacShaKeyFor()로 HMAC-SHA용 SecretKey 객체를 생성
+   - 이 키가 노출되면 누구든 유효한 JWT를 만들 수 있다 → 절대 노출 금지
+   - 운영 환경에서는 환경변수나 Vault로 관리해야 한다
+
+7. 토큰 만료(Expiration) 메커니즘
+   - 토큰 생성 시 expiration 클레임에 만료 시각을 넣는다
+   - parseClaims() 호출 시 JJWT가 자동으로 만료를 체크한다
+   - 만료된 토큰 → ExpiredJwtException → isValid()가 false 반환
+   - 우리 설정: 24시간 (86400000ms)
+   - Refresh Token은 아직 없음 → 24시간 후 재로그인 필요
+
+
+────────────────────────────────────────
+[C] JwtAuthenticationFilter - 매 요청의 인증 처리
+────────────────────────────────────────
+
+8. OncePerRequestFilter를 상속하는 이유
+   - 일반 Filter는 요청당 여러 번 실행될 수 있다 (forward, include 등)
+   - OncePerRequestFilter는 요청당 딱 한 번만 실행을 보장한다
+   - JWT 검증은 한 번이면 충분 → OncePerRequestFilter가 적절
+
+9. 필터의 동작 흐름 (doFilterInternal)
+   - ① Authorization 헤더에서 "Bearer " 이후 토큰 추출
+   - ② JwtProvider.isValid()로 토큰 유효성 검증
+   - ③ 토큰에서 email 추출 → UserDetailsService로 사용자 조회
+   - ④ UsernamePasswordAuthenticationToken 생성 (credentials는 null)
+   - ⑤ SecurityContextHolder에 Authentication 객체 저장
+   - ⑥ filterChain.doFilter()로 다음 필터/컨트롤러로 넘김
+   - 토큰이 없거나 유효하지 않으면 ④⑤를 건너뛰고 바로 ⑥
+
+10. addFilterBefore의 위치가 중요한 이유
+    - UsernamePasswordAuthenticationFilter 앞에 JWT 필터를 배치
+    - JWT 필터가 먼저 실행 → SecurityContext에 인증 정보가 세팅됨
+    - 그래야 이후 필터/인가 검사에서 "이 사용자는 인증됨"으로 판단
+    - 순서가 뒤바뀌면 인증 없이 인가 검사가 먼저 → 항상 403
+
+11. SecurityContextHolder의 역할
+    - 현재 요청의 인증 정보를 ThreadLocal에 저장하는 저장소
+    - 컨트롤러에서 @AuthenticationPrincipal 등으로 꺼내 쓸 수 있다
+    - STATELESS 모드이므로 요청이 끝나면 자동으로 비워진다
+    - 매 요청마다 JWT → SecurityContext → 사용 → 폐기 사이클
+
+
+────────────────────────────────────────
+[D] UserDetailsService - 사용자 정보 로딩
+────────────────────────────────────────
+
+12. UserDetailsService 인터페이스의 역할
+    - Spring Security가 사용자를 조회할 때 사용하는 표준 인터페이스
+    - loadUserByUsername(String username) 하나만 구현하면 된다
+    - 우리 코드에서는 username이 실제로는 email이다
+
+13. UserDetails 객체를 만드는 방법
+    - Spring이 제공하는 User 클래스를 사용 (우리 코드 방식)
+    - 또는 도메인 User 엔티티가 직접 UserDetails를 구현하는 방식도 있다
+    - 핵심 세 가지: username(식별자), password(비밀번호), authorities(권한)
+
+14. GrantedAuthority와 ROLE_ 접두사
+    - SimpleGrantedAuthority("ROLE_USER") 형태로 권한을 부여
+    - ROLE_ 접두사는 Spring Security의 관례 → hasRole("USER")에서 자동 매칭
+    - hasRole("USER")는 내부적으로 "ROLE_USER"를 찾는다
+    - hasAuthority("ROLE_USER")와 hasRole("USER")는 같은 결과
+
+
+────────────────────────────────────────
+[E] PasswordEncoder - 비밀번호 암호화
+────────────────────────────────────────
+
+15. BCryptPasswordEncoder를 쓰는 이유
+    - BCrypt는 단방향 해시 + Salt + Work Factor를 가진 알고리즘
+    - 같은 비밀번호도 매번 다른 해시값이 나온다 (Salt 때문에)
+    - Work Factor로 해시 속도를 조절 → 무차별 대입 공격에 강하다
+    - SHA-256 같은 단순 해시는 빠르기 때문에 비밀번호 저장에 부적합
+
+16. 도메인 객체(Password)에서 PasswordEncoder를 받는 패턴
+    - Password.encode(rawPassword, encoder) → 인코딩된 Password 생성
+    - Password.matches(rawPassword, encoder) → 비밀번호 일치 확인
+    - PasswordEncoder를 외부에서 주입받으므로 도메인이 Spring에 직접 의존하지 않음
+    - 단, PasswordEncoder 인터페이스 자체는 Spring Security 의존 → 트레이드오프
+
+
+────────────────────────────────────────
+[F] 예외 처리 - 인증/인가 실패 응답
+────────────────────────────────────────
+
+17. GlobalExceptionHandler에서 인증 예외 처리
+    - BadCredentialsException, UsernameNotFoundException → 401 Unauthorized
+    - 두 예외를 같은 메시지("이메일 또는 비밀번호가 올바르지 않습니다")로 처리
+    - 이유: 어떤 것이 틀렸는지 알려주면 공격자가 유효한 이메일을 파악할 수 있다
+
+18. 필터 레벨 예외 vs 컨트롤러 레벨 예외
+    - @RestControllerAdvice는 컨트롤러 이후 예외만 잡는다
+    - JWT 필터에서 발생하는 예외는 여기서 안 잡힘
+    - 현재 JwtAuthenticationFilter는 예외를 던지지 않고 조용히 넘김 (isValid false → 무시)
+    - 인증 실패 시 Spring Security가 자동으로 401을 반환한다
+
+
+────────────────────────────────────────
+[G] 전체 요청 흐름 - 머릿속에 그려야 하는 그림
+────────────────────────────────────────
+
+19. 인증이 필요한 API 요청의 전체 흐름
+    요청 → JwtAuthenticationFilter
+         → Authorization 헤더에서 토큰 추출
+         → JwtProvider.isValid() 검증
+         → CustomUserDetailsService.loadUserByUsername() 조회
+         → SecurityContextHolder에 Authentication 저장
+         → authorizeHttpRequests 인가 규칙 매칭
+         → 컨트롤러 실행
+         → 응답
+
+20. 인증이 불필요한 API 요청의 전체 흐름 (/api/auth/**)
+    요청 → JwtAuthenticationFilter
+         → 토큰 없음 → SecurityContext 비어있음
+         → authorizeHttpRequests에서 permitAll() 매칭
+         → 컨트롤러 실행 (인증 없이)
+         → 응답
+
+
+========================================
+요약: 핵심 클래스 4개와 그 관계
+========================================
+
+SecurityConfig          → 전체 보안 규칙 정의 (What)
+JwtAuthenticationFilter → 매 요청마다 토큰 검증 수행 (How)
+JwtProvider             → JWT 생성/파싱/검증 도구 (Tool)
+CustomUserDetailsService → 토큰의 email로 DB에서 사용자 조회 (Who)
+
+이 4개가 어떻게 연결되는지 흐름을 그릴 수 있으면
+현재 dxmall의 스프링 시큐리티를 이해한 것이다.

@@ -1,0 +1,20 @@
+Swagger 페이지에 토큰 로그인(Authorize 버튼) 추가하는 방법
+
+SwaggerConfig.java 파일을 만들어서 OpenAPI 빈에 SecurityScheme을 등록하면 된다.
+
+핵심 설정:
+- type: HTTP
+- scheme: bearer
+- bearerFormat: JWT
+
+이렇게 하면 Swagger UI 상단에 "Authorize" 버튼이 생기고,
+로그인 API로 받은 JWT 토큰을 붙여넣으면
+이후 모든 API 요청에 Authorization: Bearer {token} 헤더가 자동으로 붙는다.
+
+파일 위치: global/security/SwaggerConfig.java
+
+사용법:
+1. POST /api/auth/login 으로 토큰 발급
+2. Swagger UI 상단 "Authorize" 버튼 클릭
+3. 토큰 값만 붙여넣기 (Bearer 접두사 불필요)
+4. "Authorize" 클릭 후 인증 필요한 API 테스트 가능

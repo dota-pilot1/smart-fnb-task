@@ -1,0 +1,22 @@
+도메인 계층에 대해 알아 보자
+=======================================================================
+user/
+├── domain/          # 비즈니스 로직이 여기에 집중
+│   ├── Email.java         # VO - 이메일 형식 자체 검증
+│   ├── Password.java      # VO - 암호화/매칭 로직 보유
+│   ├── Role.java          # Enum
+│   ├── User.java          # Aggregate Root - 정적 팩토리 메서드
+│   └── UserRepository.java # 도메인 인터페이스
+├── application/     # 유스케이스 오케스트레이션만
+│   ├── AuthService.java
+│   └── dto/
+├── infrastructure/  # JPA 구현체
+│   └── JpaUserRepository.java
+└── presentation/    # REST Controller
+    └── AuthController.java
+
+=======================================================================
+도메인 계층이란 무엇인가?
+1. 말그대로 유저 도메인에 대한 규칙을 정의
+2. 레포지터리를 따로 구현하는 이유는 해당 도메인에 대해 jpa 의존성을 분리하기 위해서이다.
+======================================================================

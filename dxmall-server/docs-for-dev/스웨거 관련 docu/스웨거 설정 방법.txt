@@ -1,0 +1,20 @@
+Swagger 설정 방법 (springdoc-openapi)
+
+1. 의존성 추가 (build.gradle)
+   implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1'
+
+2. Security 설정에서 Swagger 경로 허용 (SecurityConfig.java)
+   .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+
+3. 접속 URL
+   http://localhost:8080/swagger-ui/index.html
+
+4. DTO에 예시값 설정하기 (@Schema 어노테이션)
+   @Schema(example = "terecal@daum.net")
+   String email
+
+   이렇게 하면 Swagger UI에서 기본 입력값이 지정한 값으로 표시된다.
+
+5. 운영 환경에서 비활성화 (application.properties)
+   springdoc.api-docs.enabled=false
+   springdoc.swagger-ui.enabled=false
