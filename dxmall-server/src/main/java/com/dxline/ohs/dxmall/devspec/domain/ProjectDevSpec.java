@@ -1,19 +1,20 @@
 package com.dxline.ohs.dxmall.devspec.domain;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-
 @Entity
-@Table(name = "project_dev_specs",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"parent_id", "name"}))
+@Table(
+    name = "project_dev_specs",
+    uniqueConstraints = @UniqueConstraint(columnNames = { "parent_id", "name" })
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ProjectDevSpec {
@@ -29,7 +30,11 @@ public class ProjectDevSpec {
     @JoinColumn(name = "parent_id")
     private ProjectDevSpec parent;
 
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+        mappedBy = "parent",
+        cascade = CascadeType.ALL,
+        orphanRemoval = true
+    )
     @OrderBy("sortOrder ASC")
     private List<ProjectDevSpec> children = new ArrayList<>();
 
@@ -40,9 +45,6 @@ public class ProjectDevSpec {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private SpecStatus status;
-
-    @Column(columnDefinition = "TEXT")
-    private String content;
 
     @Column(nullable = false)
     private int sortOrder;
@@ -68,7 +70,12 @@ public class ProjectDevSpec {
         return spec;
     }
 
-    public static ProjectDevSpec createChild(String name, ProjectDevSpec parent, SpecType type, int sortOrder) {
+    public static ProjectDevSpec createChild(
+        String name,
+        ProjectDevSpec parent,
+        SpecType type,
+        int sortOrder
+    ) {
         ProjectDevSpec spec = new ProjectDevSpec();
         spec.name = name;
         spec.parent = parent;
@@ -78,10 +85,6 @@ public class ProjectDevSpec {
         spec.depth = parent.depth + 1;
         parent.children.add(spec);
         return spec;
-    }
-
-    public void updateContent(String content) {
-        this.content = content;
     }
 
     public void updateStatus(SpecStatus status) {

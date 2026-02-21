@@ -6,6 +6,7 @@ import { SignupPage } from "@/pages/signup/SignupPage";
 import { ProductListPage } from "@/pages/products/ProductListPage";
 import { ProductDetailPage } from "@/pages/product-detail/ProductDetailPage";
 import { ProtectedRoute } from "@/shared/ui/ProtectedRoute";
+import { DevSpecPage } from "@/pages/devspec/DevSpecPage";
 
 export function App() {
   return (
@@ -17,9 +18,8 @@ export function App() {
         <Route path="products" element={<ProductListPage />} />
         <Route path="products/:id" element={<ProductDetailPage />} />
 
-        {/* 보호 라우트 - 추후 확장 */}
         <Route element={<ProtectedRoute />}>
-          {/* 예: <Route path="orders" element={<OrdersPage />} /> */}
+          <Route path="devspec" element={<DevSpecPage />} />
         </Route>
       </Route>
     </Routes>

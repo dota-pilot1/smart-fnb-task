@@ -22,6 +22,12 @@ export function RootLayout() {
             >
               상품
             </Link>
+            <Link
+              to="/devspec"
+              className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              업무 관리
+            </Link>
           </div>
           <div className="flex items-center gap-4">
             {token ? (
