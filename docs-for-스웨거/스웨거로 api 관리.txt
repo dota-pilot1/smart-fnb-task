@@ -1,0 +1,191 @@
+================================================================
+  Swagger(springdoc-openapi)로 API 관리
+  프로젝트: smart-fnb-task (Spring Boot 4.x + Java 21)
+  작성일: 2026-02-22
+================================================================
+
+── Swagger란? ───────────────────────────────────────────────────
+
+  API 명세를 자동으로 문서화하고, 브라우저에서 직접 테스트할 수 있게 해주는 도구.
+  Spring 생태계에서는 springdoc-openapi 라이브러리를 사용해 통합한다.
+
+  핵심 개념 2가지:
+  - OpenAPI (스펙)    : API를 JSON/YAML 형태로 기술하는 표준 규격 (v3.x)
+  - Swagger UI (시각화): OpenAPI 스펙을 읽어서 사람이 보기 쉽게 렌더링하는 웹 화면
+
+  공식 문서:
+  - springdoc-openapi : https://springdoc.org
+  - OpenAPI 3.0 스펙   : https://swagger.io/specification
+  - Swagger UI        : https://swagger.io/tools/swagger-ui
+
+
+── 라이브러리 설치 (build.gradle) ───────────────────────────────
+
+  현재 프로젝트 설정:
+  implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1'
+
+  버전 선택 기준:
+  - springdoc 2.x 이상   → Spring Boot 3.x / Jakarta EE 사용
+  - springdoc 3.x 이상   → Spring Boot 4.x 이상 (현재 프로젝트)
+
+
+── 서버 실행 ────────────────────────────────────────────────────
+
+  1. Docker 컨테이너 먼저 실행 (DB 등)
+     docker compose up -d
+
+  2. Spring Boot 서버 실행
+     ./gradlew bootRun
+
+  ※ 포트 충돌 시 (8080 이미 사용 중):
+     lsof -ti:8080 | xargs kill -9
+     ./gradlew bootRun
+
+
+── Swagger 페이지 접속 ──────────────────────────────────────────
+
+  http://localhost:8080/swagger-ui/index.html
+
+  이 주소로 접속하면 현재 등록된 모든 API 엔드포인트 목록이 나온다.
+  각 엔드포인트를 클릭하면 요청 파라미터, 응답 스펙, 직접 테스트 기능을 사용할 수 있다.
+
+
+── SecurityConfig - Swagger 경로 허용 ───────────────────────────
+
+  Spring Security 적용 시 Swagger 경로를 반드시 인증 없이 접근 가능하게 설정해야 한다.
+
+  현재 코드 (SecurityConfig.java):
+    .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+
+  - /swagger-ui/**  : Swagger UI 정적 리소스
+  - /v3/api-docs/** : OpenAPI JSON 스펙 파일 (Swagger UI가 이 파일을 읽어서 화면 구성)
+
+
+── SwaggerConfig - JWT 인증 버튼 추가 ────────────────────────────
+
+  현재 코드 (global/security/SwaggerConfig.java):
+
+    @Bean
+    public OpenAPI openAPI() {
+        String schemeName = "Bearer Authentication";
+        return new OpenAPI()
+            .info(new Info()
+                .title("Smart F&B API")
+                .description("Smart F&B API")
+                .version("1.0.0"))
+            .addSecurityItem(new SecurityRequirement().addList(schemeName))
+            .components(new Components().addSecuritySchemes(schemeName,
+                new SecurityScheme()
+                    .type(SecurityScheme.Type.HTTP)
+                    .scheme("bearer")
+                    .bearerFormat("JWT")));
+    }
+
+  .addSecurityItem()   → 모든 API에 기본으로 인증 요구 표시
+  .addSecuritySchemes() → Swagger UI 상단에 "Authorize" 버튼 생성
+
+  사용법 (인증이 필요한 API 테스트 시):
+    1. POST /api/auth/login 으로 로그인 → accessToken 확인
+    2. Swagger UI 상단 우측의 "Authorize" 버튼(🔒) 클릭
+    3. Value 입력창에 토큰 값만 붙여넣기 (Bearer 접두사 불필요)
+    4. "Authorize" 클릭 → "Close"
+    5. 이후 모든 요청에 Authorization: Bearer {token} 헤더 자동 추가
+
+
+── @Schema - DTO 예시값 설정 ────────────────────────────────────
+
+  Swagger UI에서 "Try it out"을 누르면 요청 본문에 예시값이 미리 채워지게 할 수 있다.
+
+  현재 프로젝트 예시 (LoginRequest.java):
+
+    import io.swagger.v3.oas.annotations.media.Schema;
+
+    public record LoginRequest(
+        @NotBlank @Email
+        @Schema(example = "terecal@daum.net")   // ← 이 부분
+        String email,
+
+        @NotBlank
+        @Schema(example = "terecal")
+        String password
+    ) {}
+
+  @Schema의 주요 속성:
+  - example     : 예시값 (UI에서 기본으로 채워짐)
+  - description : 필드 설명 문구
+  - required    : 필수 여부 표시
+
+
+── @Operation, @Tag - 엔드포인트 설명 추가 ──────────────────────
+
+  필요 시 Controller에 추가적인 설명을 달 수 있다.
+
+  import io.swagger.v3.oas.annotations.Operation;
+  import io.swagger.v3.oas.annotations.tags.Tag;
+
+  @Tag(name = "인증", description = "로그인, 회원가입, 토큰 재발급 API")
+  @RestController
+  public class AuthController {
+
+      @Operation(summary = "로그인", description = "이메일/비밀번호로 로그인 후 토큰 발급")
+      @PostMapping("/api/auth/login")
+      public ResponseEntity<AuthResponse> login(...) { ... }
+  }
+
+  현재 프로젝트에서는 설정 없어도 메서드명 기반으로 자동 표시되지만,
+  한국어 설명을 달려면 @Operation / @Tag 사용을 권장.
+
+
+── 자동 생성되는 API 문서 JSON 확인 ─────────────────────────────
+
+  Swagger UI가 내부적으로 읽는 OpenAPI 스펙 파일을 직접 확인할 수 있다:
+  http://localhost:8080/v3/api-docs
+
+  이 JSON을 Postman, Insomnia 같은 도구로 Import하면 동일한 API 컬렉션 생성 가능.
+
+
+── 운영 환경에서 Swagger 비활성화 ───────────────────────────────
+
+  운영 서버(prod)에서는 API 명세가 노출되지 않도록 비활성화한다.
+
+  application-prod.properties:
+    springdoc.api-docs.enabled=false
+    springdoc.swagger-ui.enabled=false
+
+  또는 프로파일로 분리해서 개발 환경에서만 활성화하는 방법도 있다.
+
+
+── Swagger UI 기본 동작 설정 ────────────────────────────────────
+
+  application.properties에서 UI 동작 방식을 제어할 수 있다.
+
+  # 처음 진입 시 컨트롤러 목록을 접힌 상태로 표시 (현재 프로젝트 적용)
+  springdoc.swagger-ui.doc-expansion=none
+
+  doc-expansion 옵션:
+  - none : 모두 닫힘 (컨트롤러가 많을 때 편리)
+  - list : 기본값. 컨트롤러는 열림, 엔드포인트는 닫힘
+  - full : 전부 열림
+
+
+── 현재 프로젝트 API 목록 ────────────────────────────────────────
+
+  인증 (AuthController)
+    POST /api/auth/signup          회원가입 (accessToken + refreshToken 반환)
+    POST /api/auth/login           로그인    (accessToken + refreshToken 반환)
+    POST /api/auth/refresh         Access Token 재발급
+    POST /api/auth/logout          로그아웃 (DB에서 refreshToken 삭제) [인증 필요]
+
+  상품 (ProductController)
+    GET  /api/products             상품 목록 조회
+    POST /api/products             상품 등록 [인증 필요]
+    ...
+
+  업무 관리 (DevspecController)
+    GET  /api/devspec/projects     프로젝트 목록 조회
+    ...
+
+  ※ 자세한 목록은 Swagger UI에서 확인:
+    http://localhost:8080/swagger-ui/index.html
+
+================================================================

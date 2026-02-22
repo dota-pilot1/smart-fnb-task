@@ -60,7 +60,7 @@ export function NoteContent({ devSpecId }: NoteContentProps) {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         setPersistedTocWidth(widthRef.current);
-        toast("패널 너비가 저장되었습니다");
+        toast.success("패널 너비가 저장되었습니다");
       }
     };
 
@@ -91,7 +91,7 @@ export function NoteContent({ devSpecId }: NoteContentProps) {
   };
 
   // 1초 디바운스 저장
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleContentChange = useCallback(
     (sectionId: number, content: string) => {
@@ -152,19 +152,18 @@ export function NoteContent({ devSpecId }: NoteContentProps) {
                   if (el && section.id) sectionRefs.current.set(section.id, el);
                 }}
                 onClick={() => section.id && setActiveId(section.id)}
-                className={`rounded-lg border transition-colors ${
-                  activeId === section.id
-                    ? "border-blue-400 bg-blue-50/30"
-                    : "border-gray-200 bg-white"
-                }`}
+                className={`rounded-lg border transition-colors ${activeId === section.id
+                  ? "border-blue-400 bg-blue-50/30 dark:bg-blue-900/10"
+                  : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+                  }`}
               >
-                <div className="px-4 py-2 border-b border-gray-100">
+                <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800">
                   <input
                     defaultValue={section.title ?? ""}
                     onBlur={(e) =>
                       section.id && handleTitleBlur(section.id, e.target.value)
                     }
-                    className="text-sm font-semibold text-gray-800 bg-transparent border-none outline-none w-full"
+                    className="text-sm font-semibold text-gray-800 dark:text-gray-100 bg-transparent border-none outline-none w-full"
                   />
                 </div>
                 <LexicalEditor
@@ -188,21 +187,21 @@ export function NoteContent({ devSpecId }: NoteContentProps) {
           document.body.style.cursor = "col-resize";
           document.body.style.userSelect = "none";
         }}
-        className="w-1 hover:w-1.5 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors shrink-0"
+        className="w-1 hover:w-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 cursor-col-resize transition-colors shrink-0"
       />
 
       {/* 우측: 목차 패널 */}
       <div
         style={{ width: tocWidth }}
-        className="border-l border-gray-200 bg-white shrink-0 flex flex-col"
+        className="border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shrink-0 flex flex-col"
       >
-        <div className="px-3 py-3 border-b border-gray-200">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+        <div className="px-3 py-3 border-b border-gray-200 dark:border-gray-800">
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             목차
           </h3>
         </div>
 
-        <div className="p-2 border-b border-gray-200">
+        <div className="p-2 border-b border-gray-200 dark:border-gray-800">
           <div className="flex gap-1">
             <input
               value={newTitle}
@@ -211,11 +210,11 @@ export function NoteContent({ devSpecId }: NoteContentProps) {
                 if (e.key === "Enter") handleAddSection();
               }}
               placeholder="섹션 추가..."
-              className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="flex-1 text-xs border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <button
               onClick={handleAddSection}
-              className="text-xs text-blue-600 hover:text-blue-800 px-2"
+              className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 px-2"
             >
               추가
             </button>
@@ -232,11 +231,10 @@ export function NoteContent({ devSpecId }: NoteContentProps) {
               onDrop={(e) => handleDrop(e, index)}
               onDragEnd={handleDragEnd}
               onClick={() => section.id && scrollToSection(section.id)}
-              className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm group ${
-                activeId === section.id
-                  ? "bg-blue-50 text-blue-700"
-                  : "hover:bg-gray-100 text-gray-600"
-              } ${dragIndex === index ? "opacity-50" : ""}`}
+              className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm group ${activeId === section.id
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+                } ${dragIndex === index ? "opacity-50" : ""}`}
             >
               <span className="cursor-grab text-gray-300 group-hover:text-gray-400 text-xs">
                 ⠿

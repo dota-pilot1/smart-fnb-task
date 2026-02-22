@@ -49,11 +49,11 @@ export function DevSpecDetail({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-white flex items-center justify-between">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{detail.name}</h2>
-          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-            <span className="px-2 py-0.5 bg-gray-100 rounded">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{detail.name}</h2>
+          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400">
+            <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded">
               {detail.type}
             </span>
             {detail.parentName && <span>상위: {detail.parentName}</span>}
@@ -63,9 +63,8 @@ export function DevSpecDetail({
         <select
           value={detail.status}
           onChange={(e) => onStatusChange(e.target.value as SpecStatus)}
-          className={`text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-            STATUS_OPTIONS.find((s) => s.value === detail.status)?.color
-          }`}
+          className={`text-sm border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 ${STATUS_OPTIONS.find((s) => s.value === detail.status)?.color
+            }`}
         >
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>

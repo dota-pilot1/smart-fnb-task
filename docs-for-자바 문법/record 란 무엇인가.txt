@@ -1,0 +1,19 @@
+// record로 쓰면 (현재)
+public record OrganizationTreeResponse(
+    Long id,
+    String name,
+    int sortOrder
+) {}
+
+// 이게 아래랑 똑같음
+public class OrganizationTreeResponse {
+    private final Long id;
+    private final String name;
+    private final int sortOrder;
+
+    // 생성자
+    // getter (id(), name(), sortOrder())
+    // equals()
+    // hashCode()
+    // toString()
+}

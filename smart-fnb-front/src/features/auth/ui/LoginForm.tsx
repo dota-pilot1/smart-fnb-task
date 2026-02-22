@@ -1,6 +1,11 @@
 import { type FormEvent, useState } from "react";
 import { useAuth } from "@/features/auth/model/use-auth";
 
+const inputClass =
+  "border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-400 dark:placeholder:text-gray-500";
+
+const labelClass = "text-sm font-medium text-gray-700 dark:text-gray-300";
+
 export function LoginForm() {
   const { login, error, loading } = useAuth();
   const [email, setEmail] = useState("terecal@daum.net");
@@ -12,15 +17,14 @@ export function LoginForm() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="flex flex-col gap-4 w-full max-w-sm"
-    >
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 w-full max-w-sm">
       {error && (
-        <p className="text-red-500 text-sm bg-red-50 p-3 rounded-lg">{error}</p>
+        <p className="text-red-500 text-sm bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
+          {error}
+        </p>
       )}
       <div className="flex flex-col gap-1">
-        <label htmlFor="email" className="text-sm font-medium text-gray-700">
+        <label htmlFor="email" className={labelClass}>
           이메일
         </label>
         <input
@@ -29,12 +33,12 @@ export function LoginForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={inputClass}
           placeholder="email@example.com"
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label htmlFor="password" className="text-sm font-medium text-gray-700">
+        <label htmlFor="password" className={labelClass}>
           비밀번호
         </label>
         <input
@@ -44,7 +48,7 @@ export function LoginForm() {
           minLength={8}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className={inputClass}
           placeholder="8자 이상"
         />
       </div>

@@ -54,7 +54,7 @@ export function DevSpecPage() {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         setPersistedTreeWidth(widthRef.current);
-        toast("패널 너비가 저장되었습니다");
+        toast.success("패널 너비가 저장되었습니다");
       }
     };
 
@@ -107,15 +107,15 @@ export function DevSpecPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)]">
-        <p className="text-gray-500">불러오는 중...</p>
+      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)] dark:bg-gray-950">
+        <p className="text-gray-500 dark:text-gray-400">불러오는 중...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)]">
+      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)] dark:bg-gray-950">
         <p className="text-red-500">{error}</p>
       </div>
     );
@@ -138,7 +138,7 @@ export function DevSpecPage() {
       {/* 트리 드래그 핸들 */}
       <div
         onMouseDown={handleTreeResizeStart}
-        className="w-1 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors shrink-0"
+        className="w-1 bg-gray-200 hover:bg-blue-400 dark:bg-gray-700 dark:hover:bg-blue-500 cursor-col-resize transition-colors shrink-0"
       />
 
       {detail && selectedId ? (
@@ -150,8 +150,8 @@ export function DevSpecPage() {
           onStatusChange={handleStatusChange}
         />
       ) : (
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
-          <div className="text-center text-gray-400">
+        <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+          <div className="text-center text-gray-400 dark:text-gray-600">
             <p className="text-lg mb-2">업무 관리</p>
             <p className="text-sm">
               왼쪽에서 프로젝트 또는 페이지를 선택하세요

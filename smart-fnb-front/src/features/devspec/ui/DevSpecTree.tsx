@@ -17,6 +17,70 @@ const STATUS_COLORS: Record<string, string> = {
   DONE: "bg-green-500",
 };
 
+// ── 아이콘 SVG 컴포넌트 ──────────────────────────────────────────
+function ChevronDown({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" className={className}>
+      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ChevronRight({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" className={className}>
+      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PlusIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className}>
+      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function EditIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className}>
+      <path d="M11 2l3 3-8 8H3v-3L11 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className}>
+      <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ── 액션 버튼 공통 컴포넌트 ─────────────────────────────────────
+function ActionBtn({
+  onClick,
+  title,
+  hoverColor = "hover:text-blue-600 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-blue-900/30",
+  children,
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  title: string;
+  hoverColor?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`w-6 h-6 flex items-center justify-center rounded text-gray-400 dark:text-gray-500 transition-colors ${hoverColor}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function DevSpecTree({
   projects,
   selectedId,
@@ -38,6 +102,7 @@ export function DevSpecTree({
       });
     }
   }, [projects]);
+
   const [showProjectInput, setShowProjectInput] = useState(false);
   const [addingPageFor, setAddingPageFor] = useState<number | null>(null);
   const [addingPageName, setAddingPageName] = useState("");
@@ -76,18 +141,21 @@ export function DevSpecTree({
   };
 
   return (
-    <div className="border-r border-gray-200 bg-white h-full flex flex-col">
-      <div className="p-3 border-b border-gray-200 flex items-center justify-between">
-        <span className="text-sm font-semibold text-gray-900">업무 관리</span>
+    <div className="border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 h-full flex flex-col">
+      {/* 헤더 */}
+      <div className="px-3 h-10 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">업무 관리</span>
         <button
           onClick={() => setShowProjectInput(true)}
-          className="text-xs text-blue-600 hover:text-blue-800"
+          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 px-2 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
         >
-          + 프로젝트
+          <PlusIcon className="w-3 h-3" />
+          프로젝트
         </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
+        {/* 프로젝트 추가 인풋 */}
         {showProjectInput && (
           <div className="mb-2 flex gap-1">
             <input
@@ -99,11 +167,11 @@ export function DevSpecTree({
                 if (e.key === "Escape") setShowProjectInput(false);
               }}
               placeholder="프로젝트명"
-              className="flex-1 text-xs border border-gray-300 rounded px-2 py-1"
+              className="flex-1 text-xs border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <button
               onClick={handleAddProject}
-              className="text-xs text-blue-600"
+              className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 px-2"
             >
               추가
             </button>
@@ -111,22 +179,27 @@ export function DevSpecTree({
         )}
 
         {projects.map((project) => (
-          <div key={project.id} className="mb-1">
-            {/* Project Node */}
+          <div key={project.id} className="mb-0.5">
+            {/* ── 프로젝트 노드 ── */}
             <div
-              className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm group ${
-                selectedId === project.id
-                  ? "bg-blue-50 text-blue-700"
-                  : "hover:bg-gray-100 text-gray-800"
-              }`}
+              className={`flex items-center gap-1 px-1 py-1.5 rounded cursor-pointer group ${selectedId === project.id
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200"
+                }`}
             >
+              {/* 토글 화살표 - 클릭 영역 넉넉하게 */}
               <button
                 onClick={() => toggleExpand(project.id)}
-                className="text-gray-400 w-4 text-xs"
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 dark:text-gray-500 shrink-0"
               >
-                {expanded.has(project.id) ? "v" : ">"}
+                {expanded.has(project.id) ? (
+                  <ChevronDown className="w-4 h-4" />
+                ) : (
+                  <ChevronRight className="w-4 h-4" />
+                )}
               </button>
 
+              {/* 프로젝트 이름 */}
               {editingId === project.id ? (
                 <input
                   autoFocus
@@ -137,72 +210,70 @@ export function DevSpecTree({
                     if (e.key === "Escape") setEditingId(null);
                   }}
                   onBlur={() => handleRename(project.id)}
-                  className="flex-1 text-xs border border-gray-300 rounded px-1 py-0.5"
+                  className="flex-1 text-xs border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 rounded px-1 py-0.5"
                 />
               ) : (
                 <span
-                  className="flex-1 truncate font-medium"
+                  className="flex-1 truncate text-sm font-medium"
                   onClick={() => onSelect(project)}
                 >
                   {project.name}
                 </span>
               )}
 
+              {/* 상태 도트 */}
               <span
-                className={`w-2 h-2 rounded-full ${STATUS_COLORS[project.status]}`}
+                className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[project.status]}`}
               />
 
-              <div className="hidden group-hover:flex gap-1">
-                <button
+              {/* hover 시 액션 버튼 */}
+              <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                <ActionBtn
+                  title="페이지 추가"
                   onClick={(e) => {
                     e.stopPropagation();
                     setAddingPageFor(project.id);
                     setExpanded((prev) => new Set(prev).add(project.id));
                   }}
-                  className="text-[10px] text-gray-400 hover:text-blue-600"
-                  title="페이지 추가"
                 >
-                  +
-                </button>
-                <button
+                  <PlusIcon className="w-3.5 h-3.5" />
+                </ActionBtn>
+                <ActionBtn
+                  title="이름 변경"
                   onClick={(e) => {
                     e.stopPropagation();
                     setEditingId(project.id);
                     setEditingName(project.name);
                   }}
-                  className="text-[10px] text-gray-400 hover:text-blue-600"
-                  title="이름 변경"
                 >
-                  e
-                </button>
-                <button
+                  <EditIcon className="w-3.5 h-3.5" />
+                </ActionBtn>
+                <ActionBtn
+                  title="삭제"
+                  hoverColor="hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (
-                      confirm(`"${project.name}" 프로젝트를 삭제하시겠습니까?`)
-                    )
+                    if (confirm(`"${project.name}" 프로젝트를 삭제하시겠습니까?`))
                       onDelete(project.id);
                   }}
-                  className="text-[10px] text-gray-400 hover:text-red-600"
-                  title="삭제"
                 >
-                  x
-                </button>
+                  <TrashIcon className="w-3.5 h-3.5" />
+                </ActionBtn>
               </div>
             </div>
 
-            {/* Children (Pages) */}
+            {/* ── 페이지 목록 ── */}
             {expanded.has(project.id) && (
-              <div className="ml-4">
+              <div className="ml-5">
                 {project.children.map((page) => (
                   <div
                     key={page.id}
-                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm group ${
-                      selectedId === page.id
-                        ? "bg-blue-50 text-blue-700"
-                        : "hover:bg-gray-100 text-gray-600"
-                    }`}
+                    className={`flex items-center gap-1 px-2 py-1.5 rounded cursor-pointer group ${selectedId === page.id
+                      ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                      : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+                      }`}
                   >
+                    {/* 페이지 이름 */}
                     {editingId === page.id ? (
                       <input
                         autoFocus
@@ -213,50 +284,50 @@ export function DevSpecTree({
                           if (e.key === "Escape") setEditingId(null);
                         }}
                         onBlur={() => handleRename(page.id)}
-                        className="flex-1 text-xs border border-gray-300 rounded px-1 py-0.5"
+                        className="flex-1 text-xs border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 rounded px-1 py-0.5"
                       />
                     ) : (
                       <span
-                        className="flex-1 truncate"
+                        className="flex-1 truncate text-sm"
                         onClick={() => onSelect(page)}
                       >
                         {page.name}
                       </span>
                     )}
 
+                    {/* 상태 도트 */}
                     <span
-                      className={`w-2 h-2 rounded-full ${STATUS_COLORS[page.status]}`}
+                      className={`w-2 h-2 rounded-full shrink-0 ${STATUS_COLORS[page.status]}`}
                     />
 
-                    <div className="hidden group-hover:flex gap-1">
-                      <button
+                    {/* hover 시 액션 버튼 */}
+                    <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                      <ActionBtn
+                        title="이름 변경"
                         onClick={(e) => {
                           e.stopPropagation();
                           setEditingId(page.id);
                           setEditingName(page.name);
                         }}
-                        className="text-[10px] text-gray-400 hover:text-blue-600"
-                        title="이름 변경"
                       >
-                        e
-                      </button>
-                      <button
+                        <EditIcon className="w-3.5 h-3.5" />
+                      </ActionBtn>
+                      <ActionBtn
+                        title="삭제"
+                        hoverColor="hover:text-red-600 hover:bg-red-50"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (
-                            confirm(`"${page.name}" 페이지를 삭제하시겠습니까?`)
-                          )
+                          if (confirm(`"${page.name}" 페이지를 삭제하시겠습니까?`))
                             onDelete(page.id);
                         }}
-                        className="text-[10px] text-gray-400 hover:text-red-600"
-                        title="삭제"
                       >
-                        x
-                      </button>
+                        <TrashIcon className="w-3.5 h-3.5" />
+                      </ActionBtn>
                     </div>
                   </div>
                 ))}
 
+                {/* 페이지 추가 인풋 */}
                 {addingPageFor === project.id && (
                   <div className="flex gap-1 px-2 py-1">
                     <input
@@ -268,11 +339,11 @@ export function DevSpecTree({
                         if (e.key === "Escape") setAddingPageFor(null);
                       }}
                       placeholder="페이지명"
-                      className="flex-1 text-xs border border-gray-300 rounded px-2 py-1"
+                      className="flex-1 text-xs border border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     />
                     <button
                       onClick={() => handleAddPage(project.id)}
-                      className="text-xs text-blue-600"
+                      className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 px-2"
                     >
                       추가
                     </button>

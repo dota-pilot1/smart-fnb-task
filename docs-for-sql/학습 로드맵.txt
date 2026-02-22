@@ -1,0 +1,539 @@
+SQL 학습 로드맵 (smart-fnb 프로젝트 기반)
+============================================
+
+현재 상태: JOOQ로 WITH RECURSIVE CTE를 사용해 조직 트리 N+1 해결 완료
+목표: 실무에서 자주 쓰이는 SQL 패턴을 프로젝트 데이터로 직접 연습
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1주차: JOIN 완전 정복
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+핵심 개념:
+  - INNER JOIN / LEFT JOIN / RIGHT JOIN / CROSS JOIN 차이
+  - ON 조건 vs WHERE 조건의 차이 (LEFT JOIN에서 특히 중요)
+  - 셀프 조인 (self-join)
+
+실습 쿼리:
+
+  1) 사용자 + 소속 조직 조회 (INNER JOIN)
+     SELECT u.name, u.email, o.name AS org_name
+     FROM users u
+     JOIN organizations o ON u.organization_id = o.id;
+
+  2) 미배정 사용자 포함 전체 조회 (LEFT JOIN)
+     SELECT u.name, u.email, o.name AS org_name
+     FROM users u
+     LEFT JOIN organizations o ON u.organization_id = o.id;
+
+  3) 조직별 멤버 수 (멤버 없는 조직 포함)
+     SELECT o.name, COUNT(u.id) AS member_count
+     FROM organizations o
+     LEFT JOIN users u ON u.organization_id = o.id
+     GROUP BY o.id, o.name;
+
+  4) 셀프 조인으로 부모-자식 관계 표시
+     SELECT child.name AS child_name,
+            parent.name AS parent_name
+     FROM organizations child
+     LEFT JOIN organizations parent ON child.parent_id = parent.id;
+
+  5) 업무 스펙 + 콘텐츠 + 피그마 링크 다중 JOIN
+     SELECT ds.name, dsc.title, dsc.content_type, fl.title AS figma_title
+     FROM project_dev_specs ds
+     LEFT JOIN dev_spec_contents dsc ON dsc.dev_spec_id = ds.id
+     LEFT JOIN figma_links fl ON fl.dev_spec_id = ds.id
+     WHERE ds.type = 'PAGE';
+
+포인트:
+  - LEFT JOIN에서 ON 조건에 필터를 넣으면 → NULL 행이 살아남음
+  - WHERE에 필터를 넣으면 → NULL 행도 제거됨
+  - 이 차이를 직접 쿼리 돌려서 체감하기
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2주차: 집계 함수 + GROUP BY + HAVING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+핵심 개념:
+  - COUNT, SUM, AVG, MIN, MAX
+  - GROUP BY 동작 원리 (그룹핑 → 집계)
+  - HAVING vs WHERE (집계 전 필터 vs 집계 후 필터)
+  - COUNT(*) vs COUNT(column) 차이
+
+실습 쿼리:
+
+  1) 상태별 업무 개수
+     SELECT status, COUNT(*) AS cnt
+     FROM project_dev_specs
+     GROUP BY status;
+
+  2) 프로젝트별 페이지 수 (페이지가 2개 이상인 프로젝트만)
+     SELECT p.name, COUNT(c.id) AS page_count
+     FROM project_dev_specs p
+     JOIN project_dev_specs c ON c.parent_id = p.id AND c.type = 'PAGE'
+     WHERE p.type = 'PROJECT'
+     GROUP BY p.id, p.name
+     HAVING COUNT(c.id) >= 2;
+
+  3) 조직별 멤버 수 + 역할별 분류
+     SELECT o.name AS org_name,
+            COUNT(u.id) AS total,
+            COUNT(CASE WHEN u.role = 'ADMIN' THEN 1 END) AS admin_count,
+            COUNT(CASE WHEN u.role = 'USER' THEN 1 END) AS user_count
+     FROM organizations o
+     LEFT JOIN users u ON u.organization_id = o.id
+     GROUP BY o.id, o.name;
+
+  4) 업무 스펙별 콘텐츠 타입 분포
+     SELECT ds.name,
+            COUNT(dsc.id) AS total_sections,
+            COUNT(CASE WHEN dsc.content_type = 'NOTE' THEN 1 END) AS notes,
+            COUNT(CASE WHEN dsc.content_type = 'CHECKLIST' THEN 1 END) AS checklists,
+            COUNT(CASE WHEN dsc.content_type = 'FIGMA' THEN 1 END) AS figmas
+     FROM project_dev_specs ds
+     LEFT JOIN dev_spec_contents dsc ON dsc.dev_spec_id = ds.id
+     WHERE ds.type = 'PAGE'
+     GROUP BY ds.id, ds.name;
+
+  5) 상품 가격 통계
+     SELECT COUNT(*) AS total_products,
+            AVG(price) AS avg_price,
+            MIN(price) AS min_price,
+            MAX(price) AS max_price,
+            SUM(stock_quantity) AS total_stock
+     FROM products;
+
+포인트:
+  - WHERE는 GROUP BY 전에 행을 필터링
+  - HAVING은 GROUP BY 후에 그룹을 필터링
+  - COUNT(*)는 NULL 포함, COUNT(column)은 NULL 제외
+  - CASE WHEN + COUNT 조합으로 피벗 테이블 효과
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3주차: 서브쿼리 (스칼라, 인라인 뷰, EXISTS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+핵심 개념:
+  - 스칼라 서브쿼리 (SELECT 절)
+  - 인라인 뷰 (FROM 절)
+  - 조건 서브쿼리 (WHERE 절 - IN, EXISTS, ANY, ALL)
+  - 상관 서브쿼리 vs 비상관 서브쿼리
+
+실습 쿼리:
+
+  1) 스칼라 서브쿼리 - 각 사용자의 소속 조직 멤버 수
+     SELECT u.name, u.email,
+            (SELECT COUNT(*) FROM users u2
+             WHERE u2.organization_id = u.organization_id) AS org_member_count
+     FROM users u;
+
+  2) IN 서브쿼리 - 콘텐츠가 하나도 없는 업무 스펙
+     SELECT ds.name, ds.status
+     FROM project_dev_specs ds
+     WHERE ds.id NOT IN (
+       SELECT DISTINCT dev_spec_id FROM dev_spec_contents
+     );
+
+  3) EXISTS - 피그마 링크가 있는 업무 스펙만 조회
+     SELECT ds.name
+     FROM project_dev_specs ds
+     WHERE EXISTS (
+       SELECT 1 FROM figma_links fl WHERE fl.dev_spec_id = ds.id
+     );
+
+  4) 인라인 뷰 - 조직별 멤버 수 통계의 평균보다 큰 조직
+     SELECT org_stats.org_name, org_stats.member_count
+     FROM (
+       SELECT o.name AS org_name, COUNT(u.id) AS member_count
+       FROM organizations o
+       LEFT JOIN users u ON u.organization_id = o.id
+       GROUP BY o.id, o.name
+     ) org_stats
+     WHERE org_stats.member_count > (
+       SELECT AVG(sub.cnt) FROM (
+         SELECT COUNT(u.id) AS cnt
+         FROM organizations o
+         LEFT JOIN users u ON u.organization_id = o.id
+         GROUP BY o.id
+       ) sub
+     );
+
+  5) 상관 서브쿼리 - 각 프로젝트에서 가장 최근 수정된 페이지
+     SELECT ds.name, ds.updated_at
+     FROM project_dev_specs ds
+     WHERE ds.type = 'PAGE'
+       AND ds.updated_at = (
+         SELECT MAX(ds2.updated_at)
+         FROM project_dev_specs ds2
+         WHERE ds2.parent_id = ds.parent_id
+           AND ds2.type = 'PAGE'
+       );
+
+포인트:
+  - 스칼라 서브쿼리는 반드시 1행 1열 반환
+  - EXISTS는 IN보다 대용량에서 성능 유리 (조건 만족 시 즉시 종료)
+  - 상관 서브쿼리는 외부 쿼리 행마다 실행 → 성능 주의
+  - NOT IN은 NULL 주의! (NULL이 포함되면 결과가 빈다)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4주차: 윈도우 함수 (ROW_NUMBER, RANK, LAG/LEAD)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+핵심 개념:
+  - OVER (PARTITION BY ... ORDER BY ...)
+  - ROW_NUMBER, RANK, DENSE_RANK 차이
+  - LAG, LEAD (이전/다음 행 참조)
+  - SUM/COUNT OVER (누적 합계, 이동 평균)
+
+실습 쿼리:
+
+  1) 조직 내 멤버 번호 매기기
+     SELECT o.name AS org_name,
+            u.name AS user_name,
+            ROW_NUMBER() OVER (PARTITION BY o.id ORDER BY u.name) AS rn
+     FROM users u
+     JOIN organizations o ON u.organization_id = o.id;
+
+  2) 상품 가격 순위
+     SELECT name, price,
+            RANK() OVER (ORDER BY price DESC) AS price_rank,
+            DENSE_RANK() OVER (ORDER BY price DESC) AS dense_rank
+     FROM products;
+
+  3) 업무 스펙 상태 변경 이력 추적 (created_at 기준 이전 상태)
+     SELECT name, status, created_at,
+            LAG(status) OVER (ORDER BY created_at) AS prev_status,
+            LEAD(status) OVER (ORDER BY created_at) AS next_status
+     FROM project_dev_specs
+     WHERE type = 'PAGE';
+
+  4) 프로젝트별 페이지 누적 카운트
+     SELECT p.name AS project_name,
+            c.name AS page_name,
+            c.sort_order,
+            COUNT(*) OVER (PARTITION BY p.id ORDER BY c.sort_order) AS cumulative_pages
+     FROM project_dev_specs p
+     JOIN project_dev_specs c ON c.parent_id = p.id AND c.type = 'PAGE'
+     WHERE p.type = 'PROJECT';
+
+  5) 조직별 멤버 수 + 전체 대비 비율
+     SELECT o.name,
+            COUNT(u.id) AS member_count,
+            ROUND(
+              COUNT(u.id) * 100.0 / SUM(COUNT(u.id)) OVER (), 1
+            ) AS percentage
+     FROM organizations o
+     LEFT JOIN users u ON u.organization_id = o.id
+     GROUP BY o.id, o.name;
+
+포인트:
+  - 윈도우 함수는 GROUP BY 없이 집계 가능 (행이 줄어들지 않음)
+  - PARTITION BY = 그룹 나누기, ORDER BY = 그룹 내 순서
+  - ROW_NUMBER는 항상 유니크, RANK는 동점 허용 후 건너뜀
+  - 실무에서 "각 그룹별 Top N" 패턴에 필수
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5주차: CTE + 재귀 쿼리 (WITH RECURSIVE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+핵심 개념:
+  - WITH (CTE) 기본 문법
+  - WITH RECURSIVE 동작 원리 (앵커 + 재귀)
+  - 재귀 종료 조건
+  - 트리/그래프 탐색
+
+실습 쿼리:
+
+  1) 기본 CTE - 가독성 개선
+     WITH active_pages AS (
+       SELECT * FROM project_dev_specs
+       WHERE type = 'PAGE' AND status = 'IN_PROGRESS'
+     )
+     SELECT p.name AS project_name, ap.name AS page_name
+     FROM active_pages ap
+     JOIN project_dev_specs p ON ap.parent_id = p.id;
+
+  2) 조직 트리 전체 조회 (이미 구현된 패턴 복습)
+     WITH RECURSIVE org_tree AS (
+       -- 앵커: 최상위 조직
+       SELECT id, name, parent_id, depth, sort_order,
+              name::TEXT AS full_path
+       FROM organizations
+       WHERE parent_id IS NULL
+       UNION ALL
+       -- 재귀: 자식 조직
+       SELECT o.id, o.name, o.parent_id, o.depth, o.sort_order,
+              ot.full_path || ' > ' || o.name
+       FROM organizations o
+       JOIN org_tree ot ON o.parent_id = ot.id
+     )
+     SELECT REPEAT('  ', depth) || name AS indented_name,
+            full_path
+     FROM org_tree
+     ORDER BY full_path;
+
+  3) 업무 스펙 트리 + 하위 항목 개수 집계
+     WITH RECURSIVE spec_tree AS (
+       SELECT id, name, parent_id, type, status, depth
+       FROM project_dev_specs
+       WHERE parent_id IS NULL
+       UNION ALL
+       SELECT ds.id, ds.name, ds.parent_id, ds.type, ds.status, ds.depth
+       FROM project_dev_specs ds
+       JOIN spec_tree st ON ds.parent_id = st.id
+     )
+     SELECT st.name, st.type, st.status,
+            COUNT(dsc.id) AS content_count
+     FROM spec_tree st
+     LEFT JOIN dev_spec_contents dsc ON dsc.dev_spec_id = st.id
+     GROUP BY st.id, st.name, st.type, st.status;
+
+  4) 특정 조직의 모든 하위 조직 찾기
+     WITH RECURSIVE descendants AS (
+       SELECT id, name, depth
+       FROM organizations
+       WHERE id = :targetOrgId  -- 시작점
+       UNION ALL
+       SELECT o.id, o.name, o.depth
+       FROM organizations o
+       JOIN descendants d ON o.parent_id = d.id
+     )
+     SELECT * FROM descendants;
+
+  5) 다중 CTE 조합 - 조직별 업무 현황 대시보드
+     WITH org_members AS (
+       SELECT organization_id, COUNT(*) AS member_count
+       FROM users
+       GROUP BY organization_id
+     ),
+     spec_status AS (
+       SELECT status, COUNT(*) AS cnt
+       FROM project_dev_specs
+       GROUP BY status
+     )
+     SELECT o.name, COALESCE(om.member_count, 0) AS members,
+            ss.status, ss.cnt
+     FROM organizations o
+     LEFT JOIN org_members om ON om.organization_id = o.id
+     CROSS JOIN spec_status ss
+     WHERE o.parent_id IS NULL;
+
+포인트:
+  - CTE는 서브쿼리보다 가독성이 좋고 재사용 가능
+  - WITH RECURSIVE = 앵커 멤버(시작) + UNION ALL + 재귀 멤버(반복)
+  - 재귀 종료: JOIN 결과가 빈 집합이면 자동 종료
+  - 무한 루프 방지: depth 제한 또는 CYCLE 감지 필요
+  - JOOQ에서 이 패턴을 이미 사용 중 (OrganizationQueryRepository)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6주차: 성능 최적화 + 인덱스 + 실행 계획
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+핵심 개념:
+  - EXPLAIN ANALYZE 읽는 법
+  - 인덱스 종류 (B-Tree, Hash, GIN, GiST)
+  - 인덱스가 타는 경우 vs 안 타는 경우
+  - 쿼리 튜닝 기본 패턴
+
+실습 쿼리:
+
+  1) 실행 계획 확인
+     EXPLAIN ANALYZE
+     SELECT u.name, o.name
+     FROM users u
+     JOIN organizations o ON u.organization_id = o.id;
+
+  2) 인덱스 생성 전후 비교
+     -- 인덱스 없이 실행
+     EXPLAIN ANALYZE
+     SELECT * FROM dev_spec_contents WHERE dev_spec_id = 1;
+
+     -- 인덱스 생성
+     CREATE INDEX idx_dev_spec_contents_spec_id ON dev_spec_contents(dev_spec_id);
+
+     -- 인덱스 있으면 실행
+     EXPLAIN ANALYZE
+     SELECT * FROM dev_spec_contents WHERE dev_spec_id = 1;
+
+  3) 복합 인덱스 활용
+     CREATE INDEX idx_devspec_type_status ON project_dev_specs(type, status);
+
+     EXPLAIN ANALYZE
+     SELECT * FROM project_dev_specs
+     WHERE type = 'PAGE' AND status = 'IN_PROGRESS';
+
+  4) 인덱스가 안 타는 패턴 확인
+     -- 함수 적용 → 인덱스 무시
+     EXPLAIN ANALYZE
+     SELECT * FROM users WHERE LOWER(email) = 'test@test.com';
+
+     -- 해결: 함수 인덱스
+     CREATE INDEX idx_users_email_lower ON users(LOWER(email));
+
+  5) N+1 vs JOIN vs 서브쿼리 성능 비교
+     -- 방법1: 개별 쿼리 (N+1 시뮬레이션)
+     SELECT * FROM organizations WHERE parent_id IS NULL;  -- 1번
+     SELECT * FROM organizations WHERE parent_id = 1;      -- N번 반복...
+
+     -- 방법2: JOIN 한 방
+     EXPLAIN ANALYZE
+     SELECT p.name AS parent, c.name AS child
+     FROM organizations p
+     LEFT JOIN organizations c ON c.parent_id = p.id
+     WHERE p.parent_id IS NULL;
+
+     -- 방법3: WITH RECURSIVE 한 방
+     EXPLAIN ANALYZE
+     WITH RECURSIVE org_tree AS (
+       SELECT id, name, parent_id, depth FROM organizations WHERE parent_id IS NULL
+       UNION ALL
+       SELECT o.id, o.name, o.parent_id, o.depth
+       FROM organizations o JOIN org_tree ot ON o.parent_id = ot.id
+     )
+     SELECT * FROM org_tree;
+
+포인트:
+  - EXPLAIN ANALYZE → 실제 실행 시간 + 실행 계획 확인
+  - Seq Scan (풀스캔) vs Index Scan (인덱스) 차이 체감
+  - WHERE 절 컬럼에 함수 쓰면 인덱스 안 탐
+  - 복합 인덱스는 왼쪽부터 매칭 (선두 컬럼 중요)
+  - JPA가 만드는 쿼리를 EXPLAIN으로 확인하는 습관
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7주차: 실전 패턴 (페이징, 동적 검색, 통계 대시보드)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+핵심 개념:
+  - OFFSET/LIMIT 페이징 vs 커서 기반 페이징
+  - 동적 검색 조건 조합
+  - 통계/대시보드 쿼리 패턴
+  - COALESCE, NULLIF 활용
+
+실습 쿼리:
+
+  1) OFFSET 페이징
+     SELECT id, name, price
+     FROM products
+     ORDER BY id
+     LIMIT 10 OFFSET 20;  -- 3페이지 (페이지당 10개)
+
+  2) 커서 기반 페이징 (대용량에서 성능 우수)
+     SELECT id, name, price
+     FROM products
+     WHERE id > :lastSeenId  -- 이전 페이지 마지막 ID
+     ORDER BY id
+     LIMIT 10;
+
+  3) 동적 검색 (JOOQ에서 자주 쓰는 패턴)
+     SELECT * FROM project_dev_specs
+     WHERE (:typeFilter IS NULL OR type = :typeFilter)
+       AND (:statusFilter IS NULL OR status = :statusFilter)
+       AND (:keyword IS NULL OR name ILIKE '%' || :keyword || '%')
+     ORDER BY sort_order;
+
+  4) 대시보드 통계 쿼리 (한 방에 여러 지표)
+     SELECT
+       (SELECT COUNT(*) FROM users) AS total_users,
+       (SELECT COUNT(*) FROM organizations) AS total_orgs,
+       (SELECT COUNT(*) FROM project_dev_specs WHERE type = 'PROJECT') AS total_projects,
+       (SELECT COUNT(*) FROM project_dev_specs WHERE status = 'DONE') AS done_specs,
+       (SELECT COUNT(*) FROM products) AS total_products;
+
+  5) 프로젝트 진행률 대시보드
+     WITH project_stats AS (
+       SELECT
+         p.id AS project_id,
+         p.name AS project_name,
+         COUNT(c.id) AS total_pages,
+         COUNT(CASE WHEN c.status = 'DONE' THEN 1 END) AS done_pages,
+         COUNT(CASE WHEN c.status = 'IN_PROGRESS' THEN 1 END) AS in_progress_pages,
+         COUNT(CASE WHEN c.status = 'TODO' THEN 1 END) AS todo_pages
+       FROM project_dev_specs p
+       LEFT JOIN project_dev_specs c ON c.parent_id = p.id AND c.type = 'PAGE'
+       WHERE p.type = 'PROJECT'
+       GROUP BY p.id, p.name
+     )
+     SELECT project_name,
+            total_pages,
+            done_pages,
+            in_progress_pages,
+            todo_pages,
+            CASE
+              WHEN total_pages = 0 THEN 0
+              ELSE ROUND(done_pages * 100.0 / total_pages, 1)
+            END AS progress_pct
+     FROM project_stats
+     ORDER BY progress_pct DESC;
+
+포인트:
+  - OFFSET 페이징은 뒤로 갈수록 느림 (앞 행을 모두 스캔)
+  - 커서 기반은 WHERE id > :cursor 라서 항상 일정한 성능
+  - JOOQ에서 동적 조건은 Condition 체이닝으로 깔끔하게 구현
+  - 대시보드 쿼리는 CTE + 조건부 집계 조합이 핵심
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8주차: JOOQ 실전 적용 (프로젝트에 쿼리 추가)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+핵심 개념:
+  - 1~7주차 배운 SQL을 JOOQ DSL로 변환
+  - 새로운 QueryRepository 만들기
+  - CQRS 패턴 확장
+
+실전 과제:
+
+  1) DevSpecQueryRepository 만들기
+     - 업무 스펙 트리를 WITH RECURSIVE로 한 방 조회
+     - 현재 JPA로 되어 있는 부분 → JOOQ CQRS로 전환
+     - OrganizationQueryRepository 패턴 그대로 적용
+
+  2) 프로젝트 대시보드 API 추가
+     - 프로젝트별 진행률 (7주차 쿼리 활용)
+     - 조직별 멤버 통계
+     - JOOQ로 구현해서 DashboardQueryRepository 생성
+
+  3) 동적 검색 API
+     - 업무 스펙 검색 (이름, 상태, 타입 필터)
+     - JOOQ Condition 체이닝 활용
+     - 커서 기반 페이징 적용
+
+  4) 성능 비교 실험
+     - JPA 방식 vs JOOQ 방식 실행 시간 비교
+     - EXPLAIN ANALYZE로 실행 계획 확인
+     - 인덱스 추가 전후 비교
+
+포인트:
+  - SQL을 먼저 PostgreSQL에서 직접 실행해서 검증
+  - 검증된 SQL을 JOOQ DSL로 변환
+  - field("column", Type.class) 패턴으로 타입 안전하게
+  - 기존 OrganizationQueryRepository 참고해서 동일한 구조 유지
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+요약: 주차별 키워드
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  1주차  JOIN           → 테이블 연결의 기본기
+  2주차  GROUP BY       → 데이터를 묶어서 집계
+  3주차  서브쿼리        → 쿼리 안의 쿼리
+  4주차  윈도우 함수     → 행별 집계 (GROUP BY 없이)
+  5주차  CTE/재귀        → 트리 탐색, 가독성 (이미 맛봄)
+  6주차  EXPLAIN/인덱스  → 왜 느린지 찾고 고치기
+  7주차  실전 패턴       → 페이징, 검색, 대시보드
+  8주차  JOOQ 적용       → 배운 SQL을 프로젝트에 녹이기
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+팁: 연습 환경
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  - Docker로 PostgreSQL 띄워서 직접 실행 (compose.yaml 이미 있음)
+  - DBeaver 또는 DataGrip 같은 SQL 클라이언트 사용 추천
+  - application.properties에 show-sql=true 되어 있으니 JPA 쿼리 확인 가능
+  - 각 주차 쿼리를 .sql 파일로 저장해두면 복습에 좋음

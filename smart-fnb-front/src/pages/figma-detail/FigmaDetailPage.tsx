@@ -55,7 +55,7 @@ export function FigmaDetailPage() {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         setPersistedWidth(widthRef.current);
-        toast("패널 너비가 저장되었습니다");
+        toast.success("패널 너비가 저장되었습니다");
       }
     };
 
