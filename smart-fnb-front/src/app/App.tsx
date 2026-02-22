@@ -3,11 +3,15 @@ import { RootLayout } from "@/app/layouts/RootLayout";
 import { HomePage } from "@/pages/home/HomePage";
 import { LoginPage } from "@/pages/login/LoginPage";
 import { SignupPage } from "@/pages/signup/SignupPage";
-import { ProductListPage } from "@/pages/products/ProductListPage";
-import { ProductDetailPage } from "@/pages/product-detail/ProductDetailPage";
 import { ProtectedRoute } from "@/shared/ui/ProtectedRoute";
 import { DevSpecPage } from "@/pages/devspec/DevSpecPage";
 import { FigmaDetailPage } from "@/pages/figma-detail/FigmaDetailPage";
+import { ConventionPage } from "@/pages/convention/ConventionPage";
+import { CodeReviewPage } from "@/pages/code-review/CodeReviewPage";
+import { PilotPage } from "@/pages/pilot/PilotPage";
+import { ChatPage } from "@/pages/chat/ChatPage";
+import { BoardPage } from "@/pages/board/BoardPage";
+import { ReportPage } from "@/pages/report/ReportPage";
 
 export function App() {
   return (
@@ -16,12 +20,16 @@ export function App() {
         <Route index element={<HomePage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="signup" element={<SignupPage />} />
-        <Route path="products" element={<ProductListPage />} />
-        <Route path="products/:id" element={<ProductDetailPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="devspec" element={<DevSpecPage />} />
           <Route path="devspec/figma/:linkId" element={<FigmaDetailPage />} />
+          <Route path="convention" element={<ConventionPage />} />
+          <Route path="code-review" element={<CodeReviewPage />} />
+          <Route path="pilot" element={<PilotPage />} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="board" element={<BoardPage />} />
+          <Route path="report" element={<ReportPage />} />
         </Route>
       </Route>
     </Routes>
