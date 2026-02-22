@@ -1,0 +1,270 @@
+NoteContent에서 LexicalEditor가 동작하는 방식
+================================================
+
+
+1. 사용하는 곳 (NoteContent.tsx)
+---------------------------------
+
+  <NoteContent devSpecId={detail.id} />
+
+  props는 devSpecId 하나뿐.
+  내부에서 useNoteSections() 훅으로 API를 직접 호출한다.
+
+  각 섹션마다:
+    <LexicalEditor
+      initialState={section.content}
+      onChange={(state) => handleContentChange(section.id, state)}
+    />
+
+  - initialState: DB에서 가져온 content (Lexical JSON 문자열)
+  - onChange: 에디터 내용이 바뀔 때마다 API로 저장
+
+
+2. LexicalEditor 내부 구조 (LexicalEditor.tsx)
+------------------------------------------------
+
+  <LexicalComposer>              ← 1) 에디터 엔진 초기화
+    <ToolbarPlugin />            ← 2) 볼드/이탤릭/제목 버튼
+    <RichTextPlugin />           ← 3) 실제 입력 영역
+    <HistoryPlugin />            ← 4) Ctrl+Z 되돌리기
+    <ListPlugin />               ← 5) 리스트 기능
+    <OnChangePlugin />           ← 6) 변경 감지 → 부모에게 전달
+    <InitialContentPlugin />     ← 7) 초기 데이터 로드
+  </LexicalComposer>
+
+  각각이 뭘 하는지:
+
+
+  1) LexicalComposer (에디터 엔진)
+  ----------------------------------
+  const initialConfig = {
+    namespace: "NoteEditor",         // 에디터 이름 (디버깅용)
+    theme: editorTheme,              // CSS 클래스 매핑 (theme.ts)
+    nodes: [HeadingNode, ListNode, ListItemNode],  // 사용할 노드 등록
+    onError: (error) => console.error(error),
+  };
+
+  - Lexical의 핵심. 에디터 인스턴스를 만든다.
+  - theme: "h1이면 이 CSS 클래스를 적용해라" 같은 매핑
+  - nodes: 사용할 노드 타입을 미리 등록해야 한다
+    (등록 안 하면 해당 노드를 만들거나 파싱할 때 에러남)
+
+
+  2) ToolbarPlugin (툴바)
+  -------------------------
+  - useLexicalComposerContext()로 에디터 인스턴스를 가져온다
+  - 버튼 클릭 → editor.dispatchCommand()로 명령을 보낸다
+
+  예시: 볼드 버튼
+    onClick={() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")}
+
+  이게 내부적으로:
+    1. FORMAT_TEXT_COMMAND 라는 커맨드를 에디터에 전달
+    2. Lexical이 현재 선택된 텍스트에 bold 포맷을 토글
+    3. EditorState가 업데이트됨
+    4. DOM이 자동으로 다시 그려짐
+
+  제목 변경도 비슷:
+    editor.update(() => {
+      const selection = $getSelection();
+      $setBlocksType(selection, () => $createHeadingNode("h1"));
+    });
+
+    - editor.update(): 에디터 상태를 직접 수정하는 트랜잭션
+    - $setBlocksType(): 선택된 블록의 타입을 바꿈
+    - $createHeadingNode("h1"): H1 노드 생성
+
+
+  3) RichTextPlugin (입력 영역)
+  ------------------------------
+  <RichTextPlugin
+    contentEditable={<ContentEditable />}   ← 실제 contentEditable div
+    placeholder={<div>내용을 입력하세요...</div>}
+    ErrorBoundary={LexicalErrorBoundary}
+  />
+
+  - contentEditable: 브라우저의 contentEditable을 래핑
+  - 사용자가 타이핑하면 → Lexical이 DOM 이벤트를 가로채서
+    → 내부 EditorState를 업데이트 → DOM을 다시 렌더링
+  - 일반 <textarea>와 달리 서식 있는 텍스트가 가능한 이유
+
+
+  4) HistoryPlugin
+  ------------------
+  - Ctrl+Z (undo), Ctrl+Shift+Z (redo) 자동 지원
+  - EditorState 변경 히스토리를 스택으로 관리
+  - 별도 코드 없이 플러그인만 넣으면 동작
+
+
+  5) ListPlugin
+  ---------------
+  - 순서 리스트, 비순서 리스트 커맨드 처리
+  - INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND를
+    에디터가 받으면 ListNode/ListItemNode를 생성
+
+
+  6) OnChangePlugin (변경 감지)
+  ------------------------------
+  <OnChangePlugin onChange={handleChange} />
+
+  const handleChange = (editorState: EditorState) => {
+    const json = JSON.stringify(editorState.toJSON());
+    onChange(json);   // 부모(NoteContent)에게 JSON 문자열 전달
+  };
+
+  - 에디터 내용이 바뀔 때마다 호출됨
+  - editorState.toJSON() → 에디터 전체 상태를 JSON 객체로 변환
+  - JSON.stringify() → 문자열로 직렬화해서 부모에게 전달
+  - 부모가 API로 DB에 저장
+
+
+  7) InitialContentPlugin (초기 데이터 로드)
+  --------------------------------------------
+  - initialState 문자열을 받아서 에디터에 로드
+
+  분기:
+    a) Lexical JSON인 경우 (이전에 Lexical로 저장한 데이터):
+       const parsed = JSON.parse(initialState);
+       if (parsed.root) {
+         editor.parseEditorState(initialState);  // 바로 복원
+       }
+
+    b) 일반 텍스트인 경우 (Lexical 전에 textarea로 저장한 데이터):
+       editor.update(() => {
+         const root = $getRoot();
+         root.clear();
+         initialState.split("\n").forEach(line => {
+           const paragraph = $createParagraphNode();
+           paragraph.append($createTextNode(line));
+           root.append(paragraph);
+         });
+       });
+
+  이렇게 하면 Lexical 도입 전에 저장한 텍스트도 깨지지 않고 표시된다.
+
+
+3. 데이터 흐름 전체 정리
+--------------------------
+
+  [페이지 로드]
+       │
+       ▼
+  NoteContent가 devSpecId를 받음
+       │
+       ▼
+  useNoteSections().fetchSections(devSpecId)
+  → GET /api/devspec/{id}/note-sections
+       │
+       ▼
+  DB에서 섹션 목록 조회 (각 행: id, title, content, sortOrder)
+       │
+       ▼
+  각 섹션마다 <LexicalEditor initialState={section.content} />
+       │
+       ▼
+  InitialContentPlugin이 content를 에디터에 로드
+       │
+       ▼
+  사용자가 편집
+       │
+       ▼
+  OnChangePlugin이 감지 → editorState.toJSON() → JSON 문자열
+       │
+       ▼
+  handleContentChange(sectionId, content)
+  → PUT /api/devspec/note-sections/{sectionId}
+       │
+       ▼
+  [DB에 해당 섹션 행만 업데이트]
+
+
+  섹션 추가: POST /api/devspec/{id}/note-sections
+  섹션 삭제: DELETE /api/devspec/note-sections/{sectionId}
+  순서 변경: PUT /api/devspec/{id}/note-sections/reorder
+
+
+4. Lexical 핵심 개념 요약
+---------------------------
+
+  EditorState
+  -----------
+  - 에디터의 전체 상태를 나타내는 불변(immutable) 객체
+  - 노드 트리 구조: Root → Paragraph → Text, Heading → Text, ...
+  - JSON으로 직렬화/역직렬화 가능
+
+  Node (노드)
+  -----------
+  - 에디터 콘텐츠의 기본 단위
+  - ParagraphNode: 일반 문단
+  - HeadingNode: h1, h2, h3
+  - ListNode: ul, ol
+  - ListItemNode: li
+  - TextNode: 실제 텍스트 (볼드, 이탤릭 등 포맷 정보 포함)
+
+  Command (커맨드)
+  -----------------
+  - 에디터에 동작을 요청하는 메시지
+  - editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold")
+  - 플러그인이 registerCommand()로 커맨드를 받아 처리
+
+  Plugin (플러그인)
+  ------------------
+  - React 컴포넌트 형태로 기능을 추가
+  - <LexicalComposer> 안에 넣기만 하면 동작
+  - useLexicalComposerContext()로 에디터 인스턴스 접근
+
+
+5. theme.ts가 하는 일
+-----------------------
+
+  export const editorTheme = {
+    heading: {
+      h1: "text-2xl font-bold mb-2",   // H1 노드에 적용할 Tailwind 클래스
+      h2: "text-xl font-bold mb-2",
+    },
+    text: {
+      bold: "font-bold",               // 볼드 텍스트에 적용할 클래스
+      italic: "italic",
+    },
+    list: {
+      ul: "list-disc ml-4 mb-2",       // 리스트에 적용할 클래스
+    },
+  };
+
+  Lexical이 DOM을 렌더링할 때:
+  - HeadingNode(h1) → <h1 class="text-2xl font-bold mb-2">
+  - 볼드 TextNode → <strong class="font-bold">
+  - ListNode(ul) → <ul class="list-disc ml-4 mb-2">
+
+  별도 CSS 파일 없이 Tailwind 클래스로 스타일링하는 구조.
+
+
+6. 정리: textarea와 뭐가 달라졌나
+------------------------------------
+
+  textarea:
+  - 단순 텍스트만 입력/출력
+  - value={string}, onChange={string}
+  - 서식 불가
+
+  LexicalEditor:
+  - 리치 텍스트 입력/출력 (볼드, 제목, 리스트 등)
+  - initialState={JSON string}, onChange={JSON string}
+  - 내부적으로 contentEditable + 노드 트리 관리
+  - 플러그인으로 기능 확장 가능
+
+  NoteContent 입장에서는 둘 다 "문자열 넣고 문자열 받는" 것은 동일.
+  차이는 그 문자열이 plain text냐 Lexical JSON이냐.
+
+
+7. 이전 구조와의 차이
+------------------------
+
+  [이전] NoteContent가 content/onSave props를 받음
+         → 내부에서 JSON 배열 [{title, body}]로 파싱
+         → 저장할 때 JSON.stringify()로 합쳐서 content 칼럼 1개에 저장
+
+  [현재] NoteContent가 devSpecId만 받음
+         → useNoteSections() 훅으로 API 직접 호출
+         → 각 섹션이 DB에서 별도 행 (title, content 각각 칼럼)
+         → 섹션 추가/수정/삭제가 개별 API 호출

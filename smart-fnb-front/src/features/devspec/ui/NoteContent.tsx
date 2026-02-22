@@ -2,38 +2,29 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { usePersistedState } from "@/shared/lib/use-persisted-state";
 import { toast } from "sonner";
 import { LexicalEditor } from "@/shared/ui/lexical/LexicalEditor";
-
-interface NoteSection {
-  title: string;
-  body: string;
-}
+import { useNoteSections } from "../model/use-note-sections";
 
 interface NoteContentProps {
-  content: string;
-  onSave: (content: string) => void;
+  devSpecId: number;
 }
 
-function parseSections(content: string): NoteSection[] {
-  if (!content) return [];
-  try {
-    const parsed = JSON.parse(content);
-    if (Array.isArray(parsed)) return parsed;
-  } catch {
-    // 기존 단순 텍스트 → 단일 섹션으로 래핑
-  }
-  return content ? [{ title: "메모", body: content }] : [];
-}
+export function NoteContent({ devSpecId }: NoteContentProps) {
+  const {
+    sections,
+    fetchSections,
+    createSection,
+    updateTitle,
+    updateContent,
+    deleteSection,
+    reorderSections,
+  } = useNoteSections();
 
-export function NoteContent({ content, onSave }: NoteContentProps) {
-  const [sections, setSections] = useState<NoteSection[]>(
-    parseSections(content),
-  );
-  const [activeIndex, setActiveIndex] = useState<number | null>(
-    sections.length > 0 ? 0 : null,
-  );
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [newTitle, setNewTitle] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const sectionRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  // 리사이즈
   const [persistedTocWidth, setPersistedTocWidth] = usePersistedState(
     "note-toc-width",
     224,
@@ -41,6 +32,16 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
   const [tocWidth, setTocWidth] = useState(persistedTocWidth);
   const isResizing = useRef(false);
   const widthRef = useRef(tocWidth);
+
+  useEffect(() => {
+    fetchSections(devSpecId);
+  }, [devSpecId, fetchSections]);
+
+  useEffect(() => {
+    if (sections.length > 0 && activeId === null) {
+      setActiveId(sections[0].id);
+    }
+  }, [sections, activeId]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -71,57 +72,40 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
     };
   }, []);
 
-  useEffect(() => {
-    const parsed = parseSections(content);
-    setSections(parsed);
-    setActiveIndex(parsed.length > 0 ? 0 : null);
-  }, [content]);
-
-  const save = useCallback(
-    (updated: NoteSection[]) => {
-      setSections(updated);
-      onSave(JSON.stringify(updated));
-    },
-    [onSave],
-  );
-
-  const addSection = () => {
+  const handleAddSection = async () => {
     if (!newTitle.trim()) return;
-    const updated = [...sections, { title: newTitle.trim(), body: "" }];
-    save(updated);
-    setActiveIndex(updated.length - 1);
+    const created = await createSection(devSpecId, newTitle.trim());
+    setActiveId(created.id);
     setNewTitle("");
   };
 
-  const removeSection = (index: number) => {
-    const updated = sections.filter((_, i) => i !== index);
-    save(updated);
-    if (activeIndex === index) {
-      setActiveIndex(
-        updated.length > 0 ? Math.min(index, updated.length - 1) : null,
-      );
-    } else if (activeIndex !== null && activeIndex > index) {
-      setActiveIndex(activeIndex - 1);
+  const handleRemoveSection = async (sectionId: number) => {
+    await deleteSection(sectionId);
+    if (activeId === sectionId) {
+      setActiveId(sections.length > 1 ? sections[0].id : null);
     }
   };
 
-  const updateSectionTitle = (index: number, title: string) => {
-    const updated = sections.map((s, i) => (i === index ? { ...s, title } : s));
-    setSections(updated);
+  const handleTitleBlur = async (sectionId: number, title: string) => {
+    await updateTitle(sectionId, title);
   };
 
-  const updateSectionBody = (index: number, body: string) => {
-    const updated = sections.map((s, i) => (i === index ? { ...s, body } : s));
-    setSections(updated);
-  };
+  // 1초 디바운스 저장
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const saveSections = () => {
-    onSave(JSON.stringify(sections));
-  };
+  const handleContentChange = useCallback(
+    (sectionId: number, content: string) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        updateContent(sectionId, content);
+      }, 1000);
+    },
+    [updateContent],
+  );
 
-  const scrollToSection = (index: number) => {
-    setActiveIndex(index);
-    const el = sectionRefs.current.get(index);
+  const scrollToSection = (id: number) => {
+    setActiveId(id);
+    const el = sectionRefs.current.get(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -133,19 +117,22 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     if (dragIndex === null || dragIndex === index) return;
-    const updated = [...sections];
-    const [moved] = updated.splice(dragIndex, 1);
-    updated.splice(index, 0, moved);
-    setSections(updated);
-    setDragIndex(index);
-    if (activeIndex === dragIndex) setActiveIndex(index);
+    // 시각적 리오더는 sections 상태로 처리되므로 여기서는 허용만
+  };
+
+  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === dropIndex) return;
+    const reordered = [...sections];
+    const [moved] = reordered.splice(dragIndex, 1);
+    reordered.splice(dropIndex, 0, moved);
+    const ids = reordered.map((s) => s.id!);
+    await reorderSections(devSpecId, ids);
+    setDragIndex(null);
   };
 
   const handleDragEnd = () => {
-    if (dragIndex !== null) {
-      onSave(JSON.stringify(sections));
-      setDragIndex(null);
-    }
+    setDragIndex(null);
   };
 
   return (
@@ -158,30 +145,33 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
               오른쪽 목차에서 섹션을 추가하세요.
             </div>
           ) : (
-            sections.map((section, index) => (
+            sections.map((section) => (
               <div
-                key={index}
+                key={section.id}
                 ref={(el) => {
-                  if (el) sectionRefs.current.set(index, el);
+                  if (el && section.id) sectionRefs.current.set(section.id, el);
                 }}
-                onClick={() => setActiveIndex(index)}
+                onClick={() => section.id && setActiveId(section.id)}
                 className={`rounded-lg border transition-colors ${
-                  activeIndex === index
+                  activeId === section.id
                     ? "border-blue-400 bg-blue-50/30"
                     : "border-gray-200 bg-white"
                 }`}
               >
                 <div className="px-4 py-2 border-b border-gray-100">
                   <input
-                    value={section.title}
-                    onChange={(e) => updateSectionTitle(index, e.target.value)}
-                    onBlur={saveSections}
+                    defaultValue={section.title ?? ""}
+                    onBlur={(e) =>
+                      section.id && handleTitleBlur(section.id, e.target.value)
+                    }
                     className="text-sm font-semibold text-gray-800 bg-transparent border-none outline-none w-full"
                   />
                 </div>
                 <LexicalEditor
-                  initialState={section.body}
-                  onChange={(state) => updateSectionBody(index, state)}
+                  initialState={section.content}
+                  onChange={(state) =>
+                    section.id && handleContentChange(section.id, state)
+                  }
                 />
               </div>
             ))
@@ -218,13 +208,13 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") addSection();
+                if (e.key === "Enter") handleAddSection();
               }}
               placeholder="섹션 추가..."
               className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <button
-              onClick={addSection}
+              onClick={handleAddSection}
               className="text-xs text-blue-600 hover:text-blue-800 px-2"
             >
               추가
@@ -235,14 +225,15 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
         <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
           {sections.map((section, index) => (
             <div
-              key={index}
+              key={section.id}
               draggable
               onDragStart={() => handleDragStart(index)}
               onDragOver={(e) => handleDragOver(e, index)}
+              onDrop={(e) => handleDrop(e, index)}
               onDragEnd={handleDragEnd}
-              onClick={() => scrollToSection(index)}
+              onClick={() => section.id && scrollToSection(section.id)}
               className={`flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer text-sm group ${
-                activeIndex === index
+                activeId === section.id
                   ? "bg-blue-50 text-blue-700"
                   : "hover:bg-gray-100 text-gray-600"
               } ${dragIndex === index ? "opacity-50" : ""}`}
@@ -256,7 +247,7 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  removeSection(index);
+                  if (section.id) handleRemoveSection(section.id);
                 }}
                 className="hidden group-hover:block text-xs text-gray-400 hover:text-red-500"
               >

@@ -15,7 +15,9 @@ export interface DevSpecTree {
 export interface DevSpecContent {
   id: number | null;
   contentType: ContentType;
+  title: string | null;
   content: string;
+  sortOrder: number;
 }
 
 export interface FigmaLink {

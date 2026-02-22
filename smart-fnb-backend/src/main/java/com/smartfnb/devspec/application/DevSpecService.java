@@ -94,7 +94,7 @@ public class DevSpecService {
         return devSpecContentRepository
             .findByDevSpecAndContentType(spec, contentType)
             .map(DevSpecContentResponse::from)
-            .orElse(new DevSpecContentResponse(null, contentType, ""));
+            .orElse(new DevSpecContentResponse(null, contentType, null, "", 0));
     }
 
     @Transactional
@@ -183,6 +183,95 @@ public class DevSpecService {
                 )
             );
         figmaLinkRepository.deleteById(linkId);
+    }
+
+    // === 노트 섹션 ===
+
+    public List<DevSpecContentResponse> findNoteSections(Long devSpecId) {
+        ProjectDevSpec spec = findSpecOrThrow(devSpecId);
+        return devSpecContentRepository
+            .findByDevSpecAndContentTypeOrderBySortOrder(spec, ContentType.NOTE)
+            .stream()
+            .map(DevSpecContentResponse::from)
+            .toList();
+    }
+
+    @Transactional
+    public DevSpecContentResponse createNoteSection(
+        Long devSpecId,
+        SaveNoteSectionRequest request
+    ) {
+        ProjectDevSpec spec = findSpecOrThrow(devSpecId);
+        int nextSort = devSpecContentRepository
+            .findByDevSpecAndContentTypeOrderBySortOrder(spec, ContentType.NOTE)
+            .size();
+        DevSpecContent section = DevSpecContent.createNote(
+            spec,
+            request.title(),
+            request.content(),
+            nextSort
+        );
+        devSpecContentRepository.save(section);
+        return DevSpecContentResponse.from(section);
+    }
+
+    @Transactional
+    public DevSpecContentResponse updateNoteSection(
+        Long sectionId,
+        SaveNoteSectionRequest request
+    ) {
+        DevSpecContent section = devSpecContentRepository
+            .findById(sectionId)
+            .orElseThrow(() ->
+                new IllegalArgumentException(
+                    "존재하지 않는 섹션입니다. id=" + sectionId
+                )
+            );
+        if (request.title() != null) section.updateTitle(request.title());
+        if (request.content() != null) section.updateContent(request.content());
+        return DevSpecContentResponse.from(section);
+    }
+
+    @Transactional
+    public void deleteNoteSection(Long sectionId) {
+        devSpecContentRepository
+            .findById(sectionId)
+            .orElseThrow(() ->
+                new IllegalArgumentException(
+                    "존재하지 않는 섹션입니다. id=" + sectionId
+                )
+            );
+        devSpecContentRepository.deleteById(sectionId);
+    }
+
+    @Transactional
+    public List<DevSpecContentResponse> reorderNoteSections(
+        Long devSpecId,
+        ReorderRequest request
+    ) {
+        ProjectDevSpec spec = findSpecOrThrow(devSpecId);
+        List<DevSpecContent> sections =
+            devSpecContentRepository.findByDevSpecAndContentTypeOrderBySortOrder(
+                spec,
+                ContentType.NOTE
+            );
+
+        for (int i = 0; i < request.ids().size(); i++) {
+            Long targetId = request.ids().get(i);
+            sections
+                .stream()
+                .filter(s -> s.getId().equals(targetId))
+                .findFirst()
+                .ifPresent(s ->
+                    s.updateSortOrder(request.ids().indexOf(targetId))
+                );
+        }
+
+        return sections
+            .stream()
+            .sorted((a, b) -> a.getSortOrder() - b.getSortOrder())
+            .map(DevSpecContentResponse::from)
+            .toList();
     }
 
     private ProjectDevSpec findSpecOrThrow(Long id) {

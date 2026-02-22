@@ -122,6 +122,53 @@ public class DevSpecController {
         return ResponseEntity.noContent().build();
     }
 
+    // === 노트 섹션 ===
+
+    @GetMapping("/{id}/note-sections")
+    public ResponseEntity<List<DevSpecContentResponse>> findNoteSections(
+        @PathVariable Long id
+    ) {
+        return ResponseEntity.ok(devSpecService.findNoteSections(id));
+    }
+
+    @PostMapping("/{id}/note-sections")
+    public ResponseEntity<DevSpecContentResponse> createNoteSection(
+        @PathVariable Long id,
+        @RequestBody SaveNoteSectionRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            devSpecService.createNoteSection(id, request)
+        );
+    }
+
+    @PutMapping("/note-sections/{sectionId}")
+    public ResponseEntity<DevSpecContentResponse> updateNoteSection(
+        @PathVariable Long sectionId,
+        @RequestBody SaveNoteSectionRequest request
+    ) {
+        return ResponseEntity.ok(
+            devSpecService.updateNoteSection(sectionId, request)
+        );
+    }
+
+    @DeleteMapping("/note-sections/{sectionId}")
+    public ResponseEntity<Void> deleteNoteSection(
+        @PathVariable Long sectionId
+    ) {
+        devSpecService.deleteNoteSection(sectionId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/note-sections/reorder")
+    public ResponseEntity<List<DevSpecContentResponse>> reorderNoteSections(
+        @PathVariable Long id,
+        @RequestBody ReorderRequest request
+    ) {
+        return ResponseEntity.ok(
+            devSpecService.reorderNoteSections(id, request)
+        );
+    }
+
     @GetMapping("/{id}/content/{contentType}")
     public ResponseEntity<DevSpecContentResponse> findContent(
         @PathVariable Long id,

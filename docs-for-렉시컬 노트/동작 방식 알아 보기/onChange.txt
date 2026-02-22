@@ -1,0 +1,11 @@
+에디터에서 타이핑
+    ↓
+LexicalEditor 내부의 OnChangePlugin이 감지
+    ↓
+editorState.toJSON() → JSON.stringify() → state (문자열)
+    ↓
+onChange(state) 콜백 호출  ← 여기가 NoteContent에 전달되는 시점
+    ↓
+handleContentChange(sectionId, state)
+    ↓
+1초 디바운스 후 → updateContent(sectionId, content) → PUT API

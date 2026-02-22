@@ -4,15 +4,19 @@ import com.smartfnb.devspec.domain.ContentType;
 import com.smartfnb.devspec.domain.DevSpecContent;
 
 public record DevSpecContentResponse(
-        Long id,
-        ContentType contentType,
-        String content
+    Long id,
+    ContentType contentType,
+    String title,
+    String content,
+    Integer sortOrder
 ) {
     public static DevSpecContentResponse from(DevSpecContent devSpecContent) {
         return new DevSpecContentResponse(
-                devSpecContent.getId(),
-                devSpecContent.getContentType(),
-                devSpecContent.getContent()
+            devSpecContent.getId(),
+            devSpecContent.getContentType(),
+            devSpecContent.getTitle(),
+            devSpecContent.getContent(),
+            devSpecContent.getSortOrder()
         );
     }
 }

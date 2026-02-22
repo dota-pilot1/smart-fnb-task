@@ -80,7 +80,12 @@ export function DevSpecDetail({
         <div className="flex-1 flex flex-col overflow-auto">
           <ContentTabs activeTab={activeTab} onTabChange={handleTabChange} />
           <div className="flex-1 overflow-auto">
-            {activeTab === "FIGMA" && <FigmaContent devSpecId={detail.id} />}
+            {activeTab === "FIGMA" && (
+              <FigmaContent
+                content={contentValue}
+                onSave={(c) => onSaveContent("FIGMA", c)}
+              />
+            )}
             {activeTab === "CHECKLIST" && (
               <ChecklistContent
                 content={contentValue}
@@ -93,12 +98,7 @@ export function DevSpecDetail({
                 onSave={(c) => onSaveContent("MMD", c)}
               />
             )}
-            {activeTab === "NOTE" && (
-              <NoteContent
-                content={contentValue}
-                onSave={(c) => onSaveContent("NOTE", c)}
-              />
-            )}
+            {activeTab === "NOTE" && <NoteContent devSpecId={detail.id} />}
           </div>
         </div>
       ) : (

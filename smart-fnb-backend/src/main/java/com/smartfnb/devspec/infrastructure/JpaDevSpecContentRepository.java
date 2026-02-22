@@ -4,16 +4,25 @@ import com.smartfnb.devspec.domain.ContentType;
 import com.smartfnb.devspec.domain.DevSpecContent;
 import com.smartfnb.devspec.domain.DevSpecContentRepository;
 import com.smartfnb.devspec.domain.ProjectDevSpec;
-import org.springframework.data.jpa.repository.JpaRepository;
-
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface JpaDevSpecContentRepository extends JpaRepository<DevSpecContent, Long>, DevSpecContentRepository {
-
+public interface JpaDevSpecContentRepository
+    extends JpaRepository<DevSpecContent, Long>, DevSpecContentRepository
+{
     @Override
-    Optional<DevSpecContent> findByDevSpecAndContentType(ProjectDevSpec devSpec, ContentType contentType);
+    Optional<DevSpecContent> findByDevSpecAndContentType(
+        ProjectDevSpec devSpec,
+        ContentType contentType
+    );
 
     @Override
     List<DevSpecContent> findByDevSpec(ProjectDevSpec devSpec);
+
+    @Override
+    List<DevSpecContent> findByDevSpecAndContentTypeOrderBySortOrder(
+        ProjectDevSpec devSpec,
+        ContentType contentType
+    );
 }
