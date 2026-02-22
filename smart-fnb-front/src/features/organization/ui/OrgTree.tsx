@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import type { OrganizationTree, SelectedNode } from "@/entities/organization";
+import type {
+  OrganizationTree,
+  SelectedNode,
+  Member,
+} from "@/entities/organization";
+import { AddMemberDialog } from "./AddMemberDialog";
 
 interface OrgTreeProps {
   organizations: OrganizationTree[];
@@ -10,12 +15,21 @@ interface OrgTreeProps {
   onCreateChild: (parentId: number, name: string) => void;
   onDelete: (id: number) => void;
   onRename: (id: number, name: string) => void;
+  onAddMember: (orgId: number, userIds: number[]) => Promise<void>;
+  fetchUnassignedUsers: () => Promise<Member[]>;
 }
 
 function ChevronDown({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" className={className}>
-      <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M4 6l4 4 4-4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -23,7 +37,14 @@ function ChevronDown({ className = "" }: { className?: string }) {
 function ChevronRight({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" className={className}>
-      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M6 4l4 4-4 4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -31,7 +52,12 @@ function ChevronRight({ className = "" }: { className?: string }) {
 function PlusIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" className={className}>
-      <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M8 3v10M3 8h10"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -39,7 +65,13 @@ function PlusIcon({ className = "" }: { className?: string }) {
 function EditIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" className={className}>
-      <path d="M11 2l3 3-8 8H3v-3L11 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M11 2l3 3-8 8H3v-3L11 2z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -47,7 +79,13 @@ function EditIcon({ className = "" }: { className?: string }) {
 function TrashIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" className={className}>
-      <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -56,7 +94,32 @@ function UserIcon({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" fill="none" className={className}>
       <circle cx="8" cy="5" r="3" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M2 14c0-3 2.5-5 6-5s6 2 6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M2 14c0-3 2.5-5 6-5s6 2 6 5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function UserPlusIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className}>
+      <circle cx="6" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M1 14c0-2.5 2-4.5 5-4.5s5 2 5 4.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path
+        d="M13 4v4M11 6h4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -93,6 +156,8 @@ function OrgNode({
   onCreateChild,
   onDelete,
   onRename,
+  onAddMember,
+  fetchUnassignedUsers,
 }: {
   org: OrganizationTree;
   selectedNode: SelectedNode | null;
@@ -103,11 +168,14 @@ function OrgNode({
   onCreateChild: (parentId: number, name: string) => void;
   onDelete: (id: number) => void;
   onRename: (id: number, name: string) => void;
+  onAddMember: (orgId: number, userIds: number[]) => Promise<void>;
+  fetchUnassignedUsers: () => Promise<Member[]>;
 }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [addingChildFor, setAddingChildFor] = useState<number | null>(null);
   const [addingChildName, setAddingChildName] = useState("");
+  const [memberDialogOpen, setMemberDialogOpen] = useState(false);
 
   const isSelected = selectedNode?.type === "org" && selectedNode.id === org.id;
   const hasChildren = org.children.length > 0 || org.members.length > 0;
@@ -131,7 +199,9 @@ function OrgNode({
     <div className="mb-0.5">
       <div
         className={`flex items-center gap-1 px-1 py-1.5 rounded cursor-pointer group ${
-          isSelected ? "bg-blue-50 text-blue-700" : "hover:bg-gray-100 text-gray-800"
+          isSelected
+            ? "bg-blue-50 text-blue-700"
+            : "hover:bg-gray-100 text-gray-800"
         }`}
       >
         <button
@@ -139,7 +209,11 @@ function OrgNode({
           className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 text-gray-400 shrink-0"
         >
           {hasChildren ? (
-            isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />
+            isExpanded ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )
           ) : (
             <span className="w-4 h-4" />
           )}
@@ -182,6 +256,16 @@ function OrgNode({
             <PlusIcon className="w-3.5 h-3.5" />
           </ActionBtn>
           <ActionBtn
+            title="멤버 추가"
+            hoverColor="hover:text-green-600 hover:bg-green-50"
+            onClick={(e) => {
+              e.stopPropagation();
+              setMemberDialogOpen(true);
+            }}
+          >
+            <UserPlusIcon className="w-3.5 h-3.5" />
+          </ActionBtn>
+          <ActionBtn
             title="이름 변경"
             onClick={(e) => {
               e.stopPropagation();
@@ -196,7 +280,8 @@ function OrgNode({
             hoverColor="hover:text-red-600 hover:bg-red-50"
             onClick={(e) => {
               e.stopPropagation();
-              if (confirm(`"${org.name}" 조직을 삭제하시겠습니까?`)) onDelete(org.id);
+              if (confirm(`"${org.name}" 조직을 삭제하시겠습니까?`))
+                onDelete(org.id);
             }}
           >
             <TrashIcon className="w-3.5 h-3.5" />
@@ -218,17 +303,22 @@ function OrgNode({
               onCreateChild={onCreateChild}
               onDelete={onDelete}
               onRename={onRename}
+              onAddMember={onAddMember}
+              fetchUnassignedUsers={fetchUnassignedUsers}
             />
           ))}
 
           {org.members.map((member) => {
-            const isUserSelected = selectedNode?.type === "user" && selectedNode.id === member.id;
+            const isUserSelected =
+              selectedNode?.type === "user" && selectedNode.id === member.id;
             return (
               <div
                 key={`user-${member.id}`}
                 onClick={() => onSelectUser(member.id)}
                 className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer ${
-                  isUserSelected ? "bg-blue-50 text-blue-700" : "hover:bg-gray-100 text-gray-600"
+                  isUserSelected
+                    ? "bg-blue-50 text-blue-700"
+                    : "hover:bg-gray-100 text-gray-600"
                 }`}
               >
                 <UserIcon className="w-3.5 h-3.5 shrink-0 text-gray-400" />
@@ -263,6 +353,15 @@ function OrgNode({
           )}
         </div>
       )}
+
+      <AddMemberDialog
+        open={memberDialogOpen}
+        onClose={() => setMemberDialogOpen(false)}
+        orgId={org.id}
+        orgName={org.name}
+        fetchUnassignedUsers={fetchUnassignedUsers}
+        onAdd={onAddMember}
+      />
     </div>
   );
 }
@@ -276,6 +375,8 @@ export function OrgTree({
   onCreateChild,
   onDelete,
   onRename,
+  onAddMember,
+  fetchUnassignedUsers,
 }: OrgTreeProps) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [showRootInput, setShowRootInput] = useState(false);
@@ -355,6 +456,8 @@ export function OrgTree({
             onCreateChild={onCreateChild}
             onDelete={onDelete}
             onRename={onRename}
+            onAddMember={onAddMember}
+            fetchUnassignedUsers={fetchUnassignedUsers}
           />
         ))}
       </div>

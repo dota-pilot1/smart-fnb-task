@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { apiClient } from "@/shared/api/client";
-import type { OrganizationTree } from "@/entities/organization";
+import type { OrganizationTree, Member } from "@/entities/organization";
 
 export function useOrganizationTree() {
   const [organizations, setOrganizations] = useState<OrganizationTree[]>([]);
@@ -14,7 +14,9 @@ export function useOrganizationTree() {
       setOrganizations(data);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "조직 목록을 불러올 수 없습니다.");
+      setError(
+        e instanceof Error ? e.message : "조직 목록을 불러올 수 없습니다.",
+      );
     } finally {
       setLoading(false);
     }
@@ -33,10 +35,13 @@ export function useOrganizationTree() {
   };
 
   const createChild = async (parentId: number, name: string) => {
-    await apiClient<OrganizationTree>(`/api/organizations/${parentId}/children`, {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    });
+    await apiClient<OrganizationTree>(
+      `/api/organizations/${parentId}/children`,
+      {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      },
+    );
     await fetchOrganizations();
   };
 
@@ -68,6 +73,10 @@ export function useOrganizationTree() {
     await fetchOrganizations();
   };
 
+  const fetchUnassignedUsers = async () => {
+    return await apiClient<Member[]>("/api/organizations/unassigned-users");
+  };
+
   return {
     organizations,
     loading,
@@ -78,6 +87,7 @@ export function useOrganizationTree() {
     updateName,
     assignUser,
     unassignUser,
+    fetchUnassignedUsers,
     refresh: fetchOrganizations,
   };
 }

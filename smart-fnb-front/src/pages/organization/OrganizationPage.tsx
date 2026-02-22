@@ -6,6 +6,7 @@ import { useOrganizationTree } from "@/features/organization/model/use-organizat
 import { useMemberDetail } from "@/features/organization/model/use-member-detail";
 import { OrgTree } from "@/features/organization/ui/OrgTree";
 import { MemberDetail } from "@/features/organization/ui/MemberDetail";
+import { apiClient } from "@/shared/api/client";
 import { toast } from "sonner";
 
 export function OrganizationPage() {
@@ -17,6 +18,9 @@ export function OrganizationPage() {
     createChild,
     deleteOrg,
     updateName,
+    unassignUser,
+    fetchUnassignedUsers,
+    refresh,
   } = useOrganizationTree();
   const { member, fetchMember, updateRole, clearMember } = useMemberDetail();
   const selectedNode = useStore(orgStore, (s) => s.selectedNode);
@@ -82,6 +86,24 @@ export function OrganizationPage() {
     toast.success("권한이 변경되었습니다");
   };
 
+  const handleAddMember = async (orgId: number, userIds: number[]) => {
+    for (const userId of userIds) {
+      await apiClient<void>(`/api/organizations/${orgId}/members`, {
+        method: "POST",
+        body: JSON.stringify({ userId }),
+      });
+    }
+    await refresh();
+    toast.success(`${userIds.length}명의 멤버가 추가되었습니다`);
+  };
+
+  const handleUnassign = async (userId: number) => {
+    await unassignUser(userId);
+    setSelectedNode(null);
+    clearMember();
+    toast.success("조직에서 제거되었습니다");
+  };
+
   const handleTreeResizeStart = () => {
     isResizing.current = true;
     document.body.style.cursor = "col-resize";
@@ -116,6 +138,8 @@ export function OrganizationPage() {
           onCreateChild={createChild}
           onDelete={handleDelete}
           onRename={updateName}
+          onAddMember={handleAddMember}
+          fetchUnassignedUsers={fetchUnassignedUsers}
         />
       </div>
 
@@ -125,7 +149,11 @@ export function OrganizationPage() {
       />
 
       {selectedNode?.type === "user" && member ? (
-        <MemberDetail member={member} onRoleChange={handleRoleChange} />
+        <MemberDetail
+          member={member}
+          onRoleChange={handleRoleChange}
+          onUnassign={handleUnassign}
+        />
       ) : (
         <div className="flex-1 flex items-center justify-center bg-gray-50">
           <div className="text-center text-gray-400">
