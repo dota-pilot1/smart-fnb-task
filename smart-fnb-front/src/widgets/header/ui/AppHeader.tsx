@@ -55,6 +55,9 @@ export function AppHeader() {
             <NavLink to="/report" className={navLinkClass}>
               업무 레포트
             </NavLink>
+            <NavLink to="/organization" className={navLinkClass}>
+              조직 관리
+            </NavLink>
           </div>
         </div>
 

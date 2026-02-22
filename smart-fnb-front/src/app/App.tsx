@@ -12,6 +12,7 @@ import { PilotPage } from "@/pages/pilot/PilotPage";
 import { ChatPage } from "@/pages/chat/ChatPage";
 import { BoardPage } from "@/pages/board/BoardPage";
 import { ReportPage } from "@/pages/report/ReportPage";
+import { OrganizationPage } from "@/pages/organization/OrganizationPage";
 
 export function App() {
   return (
@@ -30,6 +31,7 @@ export function App() {
           <Route path="chat" element={<ChatPage />} />
           <Route path="board" element={<BoardPage />} />
           <Route path="report" element={<ReportPage />} />
+          <Route path="organization" element={<OrganizationPage />} />
         </Route>
       </Route>
     </Routes>
