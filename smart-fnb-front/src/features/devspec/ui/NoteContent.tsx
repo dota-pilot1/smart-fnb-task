@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { usePersistedState } from "@/shared/lib/use-persisted-state";
+import { toast } from "sonner";
+import { LexicalEditor } from "@/shared/ui/lexical/LexicalEditor";
 
 interface NoteSection {
   title: string;
@@ -31,6 +34,42 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
   const [newTitle, setNewTitle] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const sectionRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [persistedTocWidth, setPersistedTocWidth] = usePersistedState(
+    "note-toc-width",
+    224,
+  );
+  const [tocWidth, setTocWidth] = useState(persistedTocWidth);
+  const isResizing = useRef(false);
+  const widthRef = useRef(tocWidth);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current) return;
+      const newWidth = Math.min(
+        400,
+        Math.max(150, window.innerWidth - e.clientX),
+      );
+      widthRef.current = newWidth;
+      setTocWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (isResizing.current) {
+        isResizing.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        setPersistedTocWidth(widthRef.current);
+        toast("패널 너비가 저장되었습니다");
+      }
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   useEffect(() => {
     const parsed = parseSections(content);
@@ -113,7 +152,7 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
     <div className="flex h-full">
       {/* 좌측: 섹션별 에디터 */}
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="max-w-3xl mx-auto space-y-6">
+        <div className="space-y-6">
           {sections.length === 0 ? (
             <div className="text-sm text-gray-400 text-center py-12">
               오른쪽 목차에서 섹션을 추가하세요.
@@ -140,12 +179,9 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
                     className="text-sm font-semibold text-gray-800 bg-transparent border-none outline-none w-full"
                   />
                 </div>
-                <textarea
-                  value={section.body}
-                  onChange={(e) => updateSectionBody(index, e.target.value)}
-                  onBlur={saveSections}
-                  placeholder="내용을 입력하세요..."
-                  className="w-full text-sm font-mono p-4 resize-none bg-transparent border-none outline-none min-h-[150px]"
+                <LexicalEditor
+                  initialState={section.body}
+                  onChange={(state) => updateSectionBody(index, state)}
                 />
               </div>
             ))
@@ -153,8 +189,23 @@ export function NoteContent({ content, onSave }: NoteContentProps) {
         </div>
       </div>
 
+      {/* 리사이즈 핸들 */}
+      <div
+        onMouseDown={(e) => {
+          e.preventDefault();
+          isResizing.current = true;
+          widthRef.current = tocWidth;
+          document.body.style.cursor = "col-resize";
+          document.body.style.userSelect = "none";
+        }}
+        className="w-1 hover:w-1.5 bg-gray-200 hover:bg-blue-400 cursor-col-resize transition-colors shrink-0"
+      />
+
       {/* 우측: 목차 패널 */}
-      <div className="w-56 border-l border-gray-200 bg-white shrink-0 flex flex-col">
+      <div
+        style={{ width: tocWidth }}
+        className="border-l border-gray-200 bg-white shrink-0 flex flex-col"
+      >
         <div className="px-3 py-3 border-b border-gray-200">
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
             목차

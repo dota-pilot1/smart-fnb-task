@@ -1,0 +1,167 @@
+업무 노트를 Lexical 에디터로 바꾸기 - Step 1. 기본 구현
+========================================================
+
+
+1. Lexical이란?
+----------------
+  Meta(Facebook)가 만든 텍스트 에디터 프레임워크.
+  Draft.js의 후속작. React 친화적.
+
+  핵심 특징:
+  - 확장 가능한 노드 시스템 (텍스트, 제목, 리스트, 코드블록 등)
+  - EditorState가 JSON으로 직렬화/역직렬화 가능
+  - 플러그인 구조로 기능 추가 (툴바, 마크다운, 멘션 등)
+  - 번들 사이즈 작음 (코어 22KB gzip)
+
+
+2. 현재 구조 (textarea)
+------------------------
+  파일: NoteContent.tsx
+
+  데이터:
+    [
+      { "title": "API 설계", "body": "단순 텍스트..." },
+      { "title": "DB 스키마", "body": "단순 텍스트..." }
+    ]
+
+  문제:
+  - 서식 없음 (볼드, 이탤릭, 제목 등 불가)
+  - 코드 하이라이팅 없음
+  - 리스트/체크박스 없음
+  - 링크 삽입 불편
+
+
+3. Lexical 적용 후 구조
+-------------------------
+  데이터:
+    [
+      {
+        "title": "API 설계",
+        "body": { ... Lexical EditorState JSON ... }
+      },
+      {
+        "title": "DB 스키마",
+        "body": { ... Lexical EditorState JSON ... }
+      }
+    ]
+
+  body가 단순 문자열 → Lexical EditorState JSON으로 변경.
+  백엔드 변경 없음 (content 필드가 TEXT라 JSON 그대로 저장).
+
+
+4. 필요한 패키지
+-----------------
+  npm install lexical @lexical/react
+
+  추가 플러그인 (필요 시):
+  npm install @lexical/rich-text     # 제목, 인용문
+  npm install @lexical/list          # 순서/비순서 리스트
+  npm install @lexical/code          # 코드 블록
+  npm install @lexical/link          # 링크
+  npm install @lexical/markdown      # 마크다운 단축키
+
+
+5. 기본 구현 계획
+------------------
+
+  Step 1-1. Lexical 에디터 컴포넌트 생성
+  ----------------------------------------
+  파일: shared/ui/LexicalEditor.tsx (범용 컴포넌트)
+
+  구조:
+    <LexicalComposer>           ← 에디터 초기화
+      <ToolbarPlugin />         ← 볼드/이탤릭/제목 등 툴바
+      <RichTextPlugin />        ← 리치 텍스트 입력 영역
+      <HistoryPlugin />         ← Ctrl+Z 되돌리기
+      <OnChangePlugin />        ← 변경 시 콜백 (저장용)
+    </LexicalComposer>
+
+  Props:
+    interface LexicalEditorProps {
+      initialState?: string;          // Lexical EditorState JSON 문자열
+      onChange: (state: string) => void;  // 변경 시 JSON 문자열 전달
+    }
+
+
+  Step 1-2. NoteContent에서 textarea → LexicalEditor 교체
+  ---------------------------------------------------------
+  변경 전:
+    <textarea
+      value={section.body}
+      onChange={(e) => updateSectionBody(index, e.target.value)}
+    />
+
+  변경 후:
+    <LexicalEditor
+      initialState={section.body}
+      onChange={(state) => updateSectionBody(index, state)}
+    />
+
+
+  Step 1-3. 데이터 호환 처리
+  ----------------------------
+  기존 데이터 (단순 텍스트 body)와의 호환:
+    - body가 Lexical JSON이면 그대로 로드
+    - body가 단순 문자열이면 ParagraphNode + TextNode로 변환
+
+    function parseBody(body: string) {
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed.root) return body;  // Lexical JSON
+      } catch {}
+      return null;  // 단순 텍스트 → 에디터에서 초기 텍스트로 삽입
+    }
+
+
+6. 툴바 기본 기능 (Step 1 범위)
+---------------------------------
+  - 볼드 (Ctrl+B)
+  - 이탤릭 (Ctrl+I)
+  - 밑줄 (Ctrl+U)
+  - 제목 (H1, H2, H3)
+  - 순서 리스트 / 비순서 리스트
+  - 구분선
+
+  나중에 추가 가능:
+  - 코드 블록
+  - 링크 삽입
+  - 이미지 삽입
+  - 마크다운 단축키
+  - 멘션 (@)
+
+
+7. 파일 구조
+--------------
+  신규:
+    shared/ui/lexical/LexicalEditor.tsx       ← 에디터 본체
+    shared/ui/lexical/ToolbarPlugin.tsx        ← 툴바
+    shared/ui/lexical/theme.ts                ← 에디터 CSS 테마
+
+  수정:
+    features/devspec/ui/NoteContent.tsx        ← textarea → LexicalEditor
+
+
+8. 구현 순서
+--------------
+  1) lexical, @lexical/react 등 패키지 설치
+  2) LexicalEditor 컴포넌트 생성 (리치텍스트 + 히스토리)
+  3) ToolbarPlugin 생성 (볼드, 이탤릭, 제목, 리스트)
+  4) theme.ts 생성 (Tailwind 기반 스타일)
+  5) NoteContent.tsx에서 textarea → LexicalEditor 교체
+  6) 데이터 호환 처리 (기존 텍스트 → Lexical 변환)
+  7) 빌드 검증
+
+
+9. 기존 목차 패널과의 관계
+----------------------------
+  목차 패널 (우측)은 그대로 유지.
+  각 섹션의 body 에디터만 textarea → Lexical로 교체.
+  섹션 추가/삭제/드래그 순서 변경은 변경 없음.
+
+  ┌────────────────────────┬──────────────┐
+  │                        │  목차 패널    │
+  │  섹션 1: [Lexical]     │  - 섹션 1    │
+  │  섹션 2: [Lexical]     │  - 섹션 2    │
+  │  섹션 3: [Lexical]     │  - 섹션 3    │
+  │                        │              │
+  └────────────────────────┴──────────────┘
