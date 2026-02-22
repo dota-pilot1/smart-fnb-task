@@ -1,0 +1,77 @@
+## N+1 문제가 발생하는 이유
+
+### 원인: JPA LAZY 로딩 + 재귀 트리 구조
+
+Organization 엔티티의 children과 members가 둘 다 LAZY 로딩:
+```java
+@OneToMany(mappedBy = "parent")    // children → LAZY (기본값)
+@OneToMany(mappedBy = "organization") // members → LAZY (기본값)
+```
+
+### 발생 흐름
+
+1) findByParentIsNull() 호출
+   → SELECT * FROM organizations WHERE parent_id IS NULL
+   → 루트 조직 3개 반환 (쿼리 1회)
+
+2) OrganizationTreeResponse.from(org) 에서 org.getChildren() 호출
+   → 이 시점에 LAZY 프록시가 실제 DB 조회 실행
+   → SELECT * FROM organizations WHERE parent_id = 1 (쿼리 +1)
+   → SELECT * FROM organizations WHERE parent_id = 2 (쿼리 +1)
+   → SELECT * FROM organizations WHERE parent_id = 3 (쿼리 +1)
+
+3) 각 조직마다 org.getMembers() 호출
+   → SELECT * FROM users WHERE organization_id = 1 (쿼리 +1)
+   → SELECT * FROM users WHERE organization_id = 2 (쿼리 +1)
+   → SELECT * FROM users WHERE organization_id = 3 (쿼리 +1)
+
+4) 2단계 자식이 있으면 또 반복
+   → child.getChildren() → 쿼리 +1
+   → child.getMembers()  → 쿼리 +1
+
+### 구체적 예시
+
+```
+본사                    ← 루트 쿼리 1회
+├── 개발팀              ← children 쿼리 +1, members 쿼리 +1
+│   ├── 프론트팀        ← children 쿼리 +1, members 쿼리 +1
+│   └── 백엔드팀        ← children 쿼리 +1, members 쿼리 +1
+├── 디자인팀            ← children 쿼리 +1, members 쿼리 +1
+└── 마케팅팀            ← children 쿼리 +1, members 쿼리 +1
+    └── SNS팀           ← children 쿼리 +1, members 쿼리 +1
+```
+조직 7개 → 쿼리 15회 (1 + 7*2)
+조직 50개 → 쿼리 101회 (1 + 50*2)
+
+### 왜 JPA로는 근본 해결이 어려운가
+
+1) @EntityGraph / JOIN FETCH
+   - 1단계 depth만 한 번에 가져올 수 있음
+   - 다단계 재귀 트리에는 depth를 미리 알 수 없어서 한계
+   - MultipleBagFetchException 위험 (children + members 동시 EAGER)
+
+2) EAGER 로딩으로 변경
+   - 조직 하나만 조회할 때도 전체 트리를 다 끌고 옴
+   - 불필요한 데이터 로딩 → 오히려 성능 악화
+
+3) Batch Size 힌트 (@BatchSize)
+   - N+1을 N/batchSize+1로 줄여주지만 근본 해결 아님
+   - 설정에 의존적, 예측 어려움
+
+### JOOQ WITH RECURSIVE CTE로 해결하는 이유
+
+SQL 레벨에서 재귀를 1회 쿼리로 처리:
+```sql
+WITH RECURSIVE org_tree AS (
+  SELECT * FROM organizations WHERE parent_id IS NULL   -- 시작점
+  UNION ALL
+  SELECT o.* FROM organizations o
+  JOIN org_tree t ON o.parent_id = t.id                  -- 재귀
+)
+SELECT t.*, u.id, u.name, u.email, u.role
+FROM org_tree t
+LEFT JOIN users u ON u.organization_id = t.id
+```
+→ DB가 재귀를 처리하고 플랫 리스트로 반환
+→ Java에서 Map 기반으로 트리 조립
+→ 쿼리 항상 1회, 조직이 몇 개든 동일

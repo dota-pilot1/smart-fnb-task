@@ -1,0 +1,95 @@
+## CQRS 패턴 설명
+
+### CQRS란
+- Command Query Responsibility Segregation (명령 조회 책임 분리)
+- 데이터를 변경하는 경로(Command)와 읽는 경로(Query)를 분리하는 패턴
+- 각 경로에 최적화된 도구를 쓸 수 있다는 게 핵심
+
+### 현재 프로젝트가 CQRS인 이유
+
+```
+[Command 경로] 생성/수정/삭제
+  Controller → Service → JPA Repository → Organization 엔티티
+  - cascade, dirty checking, 연관관계 관리에 JPA가 유리
+
+[Query 경로] 조회
+  Controller → Service → JOOQ QueryRepository → SQL 직접 실행
+  - WITH RECURSIVE CTE로 1회 쿼리, 트리 조립은 Java에서
+```
+
+실제 코드로 보면:
+```java
+@Service
+public class OrganizationService {
+
+    // Command용 (JPA)
+    private final OrganizationRepository organizationRepository;
+
+    // Query용 (JOOQ)
+    private final OrganizationQueryRepository organizationQueryRepository;
+
+    // Command: JPA로 처리
+    public OrganizationTreeResponse createRoot(...) {
+        organizationRepository.save(org);
+    }
+
+    // Query: JOOQ로 처리
+    public List<OrganizationTreeResponse> findAll() {
+        return organizationQueryRepository.findAllTree();
+    }
+}
+```
+
+### 왜 분리하나
+
+| | Command (JPA) | Query (JOOQ) |
+|--|---------------|--------------|
+| 목적 | 데이터 변경 | 데이터 조회 |
+| 중요한 것 | 무결성, 관계 관리, 트랜잭션 | 성능, 유연한 SQL |
+| JPA가 잘하는 것 | cascade 삭제, dirty checking, 연관관계 | - |
+| JPA가 못하는 것 | - | 재귀 CTE, 복잡한 JOIN, N+1 |
+| JOOQ가 잘하는 것 | - | 복잡한 SQL 1회 조회, CTE, 윈도우 함수 |
+| JOOQ가 못하는 것 | 엔티티 상태 추적, cascade, 관계 관리 | - |
+
+서로의 약점을 보완하는 구조.
+
+### CQRS의 단계별 수준
+
+1단계 (현재): 같은 DB, 같은 서비스 안에서 Repository만 분리
+```
+Service
+├── JpaOrganizationRepository  (Command)
+└── OrganizationQueryRepository (Query)
+```
+
+2단계: 서비스 레벨 분리
+```
+OrganizationCommandService → JPA
+OrganizationQueryService   → JOOQ
+```
+
+3단계 (풀 CQRS): DB까지 분리
+```
+Command → Write DB (PostgreSQL)
+Query   → Read DB (별도 복제본 or Elasticsearch)
+이벤트로 동기화
+```
+
+현재 프로젝트는 1단계로, 실무에서 가장 흔하고 실용적인 수준.
+DB 분리까지 가는 건 대규모 트래픽이 아니면 오버엔지니어링.
+
+### 이 패턴을 다른 도메인에도 적용할 수 있나
+
+DevSpec(업무 관리)도 동일한 트리 구조라 같은 문제가 있음.
+필요하면 DevSpecQueryRepository를 만들어서 똑같이 적용 가능:
+```
+DevSpecService
+├── JpaDevSpecRepository        (Command)
+└── DevSpecQueryRepository      (Query, JOOQ)
+```
+
+### 핵심 정리
+- CQRS = 쓰기는 JPA, 읽기는 JOOQ로 책임 분리
+- 각각 잘하는 걸 시키는 것이 핵심 (만능 도구는 없다)
+- 현재 프로젝트는 가장 실용적인 1단계 CQRS
+- Repository 레벨만 분리해도 N+1 문제 완전 해결

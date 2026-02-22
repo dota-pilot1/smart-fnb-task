@@ -1,0 +1,45 @@
+## 조직 관리 구현 계획
+
+### 1단계: 헤더 메뉴 순서 변경 [완료]
+- 조직 관리를 업무 관리 왼쪽(맨 첫번째)으로 이동
+- AppHeader.tsx NavLink 순서 변경
+
+### 2단계: DB + 백엔드 구현 [완료]
+- organizations 테이블 (self-referential 트리 구조)
+  - id, parent_id, name, sort_order, depth, created_at, updated_at
+  - UNIQUE(parent_id, name)
+- users 테이블에 organization_id FK 추가
+- organization 도메인 모듈 (devspec 패턴 동일)
+  - Organization 엔티티, Repository, Service, Controller
+  - API 9개 엔드포인트
+
+### 3단계: 프론트 전체 구현 [완료]
+- 2패널 레이아웃: 왼쪽 조직+유저 트리 / 오른쪽 상세 패널
+- 트리: 조직 노드 펼치면 하위 조직 + 소속 유저 표시
+- 유저 노드 클릭 → 유저 정보 + 권한(Role) 수정
+- 조직 CRUD: 추가/수정/삭제 (인라인 편집)
+- 패널 리사이즈 + localStorage 저장
+
+### API 목록
+| Method | URL                                  | 설명            |
+|--------|--------------------------------------|-----------------|
+| POST   | /api/organizations                   | 루트 조직 생성  |
+| POST   | /api/organizations/{id}/children     | 하위 조직 생성  |
+| GET    | /api/organizations                   | 전체 트리 조회  |
+| PUT    | /api/organizations/{id}/name         | 조직명 수정     |
+| DELETE | /api/organizations/{id}              | 조직 삭제       |
+| POST   | /api/organizations/{id}/members      | 유저 배정       |
+| DELETE | /api/organizations/members/{userId}  | 유저 배정 해제  |
+| GET    | /api/organizations/members/{userId}  | 유저 상세 조회  |
+| PUT    | /api/organizations/members/{userId}/role | 권한 변경   |
+| GET    | /api/organizations/unassigned-users  | 미배정 유저 조회|
+
+### 흐름 요약
+트리 사이드바          |  본문 (상세 패널)
+----------------------|------------------
+본사                  |
+├── 개발팀            |  [유저 클릭 시]
+│   ├── 홍길동        →  이름: 홍길동
+│   └── 김철수        →  이메일: kim@...
+└── 디자인팀          →  권한: USER ▼ (수정 가능)
+    └── 이영희        →  소속: 개발팀

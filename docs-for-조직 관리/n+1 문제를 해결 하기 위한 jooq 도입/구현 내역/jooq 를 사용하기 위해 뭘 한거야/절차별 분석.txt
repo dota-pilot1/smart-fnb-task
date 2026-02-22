@@ -1,0 +1,200 @@
+## JOOQ 도입 절차별 분석
+
+### 절차 1: 의존성 확인 (이미 있었음)
+
+build.gradle에 이미 포함되어 있었다:
+```gradle
+implementation 'org.springframework.boot:spring-boot-starter-jooq'
+```
+이 한 줄이면 Spring Boot가 자동으로:
+- DSLContext 빈 생성
+- DataSource 기반으로 PostgreSQL 방언 감지
+- 별도 application.properties 설정 불필요
+
+만약 없었다면 이 줄을 추가하고 gradle sync 하면 됨.
+
+
+### 절차 2: OrganizationQueryRepository 생성 (새 파일)
+
+파일: organization/infrastructure/OrganizationQueryRepository.java
+
+왜 infrastructure 패키지인가:
+- 도메인 레이어가 아닌 인프라 레이어 (DB 접근 기술에 의존)
+- 기존 JpaOrganizationRepository와 같은 레벨
+
+핵심 구조:
+```java
+@Repository
+@RequiredArgsConstructor
+public class OrganizationQueryRepository {
+
+    private final DSLContext dsl;  // Spring이 자동 주입
+
+    public List<OrganizationTreeResponse> findAllTree() {
+        // 1) CTE 정의
+        // 2) 메인 쿼리 실행
+        // 3) 플랫 결과 → 트리 조립
+    }
+}
+```
+
+DSLContext 주입이 전부. @Configuration이나 @Bean 등록 없이
+@RequiredArgsConstructor + final 필드로 생성자 주입됨.
+
+
+### 절차 3: WITH RECURSIVE CTE 쿼리 작성
+
+CTE 정의 부분:
+```java
+var orgTree = name("org_tree");                         // CTE 이름 선언
+var orgTreeCte = orgTree
+    .fields("id", "name", "parent_id", "sort_order", "depth")  // CTE 컬럼
+    .as(
+        // 기저 조건: 루트 조직 (parent_id IS NULL)
+        select(field("id", Long.class), ...)
+            .from(table("organizations"))
+            .where(field("parent_id").isNull())
+
+        .unionAll(
+
+        // 재귀 조건: 자식 → 부모 JOIN
+            select(field("o.id", Long.class), ...)
+                .from(table("organizations").as("o"))
+                .join(table(orgTree))                    // CTE 자기 참조
+                .on(field("o.parent_id").eq(field("org_tree.id")))
+        )
+    );
+```
+
+메인 쿼리:
+```java
+var rows = dsl
+    .with(orgTreeCte)                                   // CTE 선언
+    .select(
+        field("org_tree.id", Long.class).as("org_id"),  // 조직 컬럼
+        ...
+        field("u.id", Long.class).as("user_id"),        // 유저 컬럼
+        field("u.name", String.class).as("user_name"),
+        field("u.email", String.class).as("user_email"),
+        field("u.role", String.class).as("user_role")
+    )
+    .from(table(orgTree))
+    .leftJoin(table("users").as("u"))                   // 유저 LEFT JOIN
+    .on(field("u.organization_id").eq(field("org_tree.id")))
+    .orderBy(...)
+    .fetch();                                           // 실행
+```
+
+여기서 생성되는 실제 SQL:
+```sql
+WITH RECURSIVE org_tree (id, name, parent_id, sort_order, depth) AS (
+    SELECT id, name, parent_id, sort_order, depth
+    FROM organizations
+    WHERE parent_id IS NULL
+    UNION ALL
+    SELECT o.id, o.name, o.parent_id, o.sort_order, o.depth
+    FROM organizations o
+    JOIN org_tree ON o.parent_id = org_tree.id
+)
+SELECT
+    org_tree.id AS org_id,
+    org_tree.name AS org_name,
+    org_tree.parent_id AS org_parent_id,
+    org_tree.sort_order AS org_sort_order,
+    org_tree.depth AS org_depth,
+    u.id AS user_id,
+    u.name AS user_name,
+    u.email AS user_email,
+    u.role AS user_role
+FROM org_tree
+LEFT JOIN users u ON u.organization_id = org_tree.id
+ORDER BY org_tree.depth, org_tree.sort_order, u.name
+```
+
+
+### 절차 4: 플랫 결과 → 트리 조립 로직 작성
+
+DB에서 오는 결과는 플랫한 행(row)의 나열:
+```
+org_id=1, org_name=본사,   parent_id=null, user_id=null
+org_id=2, org_name=개발팀, parent_id=1,    user_id=10, user_name=홍길동
+org_id=2, org_name=개발팀, parent_id=1,    user_id=11, user_name=김철수
+org_id=3, org_name=디자인팀, parent_id=1,  user_id=12, user_name=이영희
+```
+
+이걸 트리로 조립하는 3단계:
+
+1단계) Map<Long, TempOrg>에 조직 수집 + 유저 추가
+```java
+for (Record row : rows) {
+    orgMap.computeIfAbsent(orgId, ...);   // 조직 없으면 생성
+    if (userId != null) org.members.add(member);  // 유저 추가
+}
+```
+
+2단계) parent_id로 부모-자식 연결
+```java
+for (TempOrg org : orgMap.values()) {
+    if (org.parentId == null) roots.add(org);      // 루트
+    else parent.children.add(org);                  // 자식 → 부모에 연결
+}
+```
+
+3단계) TempOrg → OrganizationTreeResponse DTO 변환
+```java
+roots.stream().map(this::toResponse).toList();
+```
+
+
+### 절차 5: OrganizationService 수정
+
+변경 전 (JPA, N+1 발생):
+```java
+private final OrganizationRepository organizationRepository;
+
+public List<OrganizationTreeResponse> findAll() {
+    return organizationRepository.findByParentIsNull().stream()
+        .map(OrganizationTreeResponse::from)
+        .toList();
+}
+```
+
+변경 후 (JOOQ, 쿼리 1회):
+```java
+private final OrganizationRepository organizationRepository;       // CUD용
+private final OrganizationQueryRepository organizationQueryRepository; // 조회용
+
+public List<OrganizationTreeResponse> findAll() {
+    return organizationQueryRepository.findAllTree();
+}
+```
+
+변경한 것:
+1. OrganizationQueryRepository 필드 추가 (생성자 주입)
+2. findAll() 내부를 JOOQ 호출로 교체
+3. 나머지 CUD 메서드는 JPA 그대로 유지
+
+
+### 절차 6: 컴파일 에러 수정
+
+첫 빌드에서 타입 에러 발생:
+```
+Result<Record9<Long,String,...>> cannot be converted to Result<Record>
+```
+
+원인: JOOQ의 select()가 컬럼 수에 따라 Record9 같은 구체 타입을 반환
+해결: Result<Record> → var로 타입 추론, 파라미터는 Result<? extends Record>로 수정
+
+
+### 절차 요약
+
+| 순서 | 작업 | 파일 |
+|------|------|------|
+| 1 | 의존성 확인 | build.gradle (이미 있었음) |
+| 2 | JOOQ 조회 Repository 생성 | OrganizationQueryRepository.java (신규) |
+| 3 | WITH RECURSIVE CTE 쿼리 작성 | 위 파일 내 findAllTree() |
+| 4 | 플랫 결과 → 트리 조립 로직 | 위 파일 내 assembleTree() |
+| 5 | Service에서 JOOQ 호출로 전환 | OrganizationService.java (수정) |
+| 6 | 타입 에러 수정 | OrganizationQueryRepository.java (수정) |
+
+총 신규 파일 1개, 수정 파일 1개로 N+1 해결 완료.

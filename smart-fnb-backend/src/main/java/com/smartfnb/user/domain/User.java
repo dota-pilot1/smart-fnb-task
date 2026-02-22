@@ -1,5 +1,6 @@
 package com.smartfnb.user.domain;
 
+import com.smartfnb.organization.domain.Organization;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
@@ -32,6 +33,10 @@ public class User {
     @Column(nullable = false)
     private Role role;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "organization_id")
+    private Organization organization;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;
@@ -62,5 +67,13 @@ public class User {
 
     public boolean checkPassword(String rawPassword, PasswordEncoder encoder) {
         return this.password.matches(rawPassword, encoder);
+    }
+
+    public void updateRole(Role role) {
+        this.role = role;
+    }
+
+    public void updateOrganization(Organization organization) {
+        this.organization = organization;
     }
 }

@@ -1,0 +1,65 @@
+## JOOQ 도입 구현 계획 - 조직 트리 N+1 해결
+
+### 현재 문제
+- Organization 트리 조회 시 JPA LAZY 로딩으로 재귀적 N+1 발생
+- 조직 7개만 해도 쿼리 15회, 50개면 100회 이상
+- JPA @EntityGraph는 다단계 재귀에 한계
+
+### 현재 상태
+- spring-boot-starter-jooq 의존성은 이미 있음 (build.gradle)
+- JOOQ 코드 생성, DSLContext 사용은 아직 없음
+- DB: PostgreSQL (compose.yaml)
+
+### 전략
+- CUD(생성/수정/삭제)는 기존 JPA 유지
+- 조직 트리 조회만 JOOQ로 전환 (WITH RECURSIVE CTE → 쿼리 1회)
+
+---
+
+### 1단계: JOOQ 코드 생성 설정
+- build.gradle에 jooq-codegen 플러그인 추가
+- PostgreSQL DB 스키마 기반으로 JOOQ 클래스 자동 생성
+- 생성 대상: organizations, users 테이블
+
+### 2단계: JOOQ 조회 전용 Repository 생성
+- OrganizationQueryRepository (DSLContext 주입)
+- WITH RECURSIVE CTE로 조직 트리 + 유저 한 방 조회
+  ```sql
+  WITH RECURSIVE org_tree AS (
+    SELECT * FROM organizations WHERE parent_id IS NULL
+    UNION ALL
+    SELECT o.* FROM organizations o
+    JOIN org_tree t ON o.parent_id = t.id
+  )
+  SELECT t.*, u.id, u.name, u.email, u.role
+  FROM org_tree t
+  LEFT JOIN users u ON u.organization_id = t.id
+  ORDER BY t.depth, t.sort_order, u.name
+  ```
+- 플랫 리스트 → Java에서 트리 조립 (Map 기반)
+
+### 3단계: Service 수정
+- OrganizationService.findAll()에서 JOOQ Repository 호출로 변경
+- 기존 JPA Repository는 CUD 용도로 유지
+
+### 4단계: 트리 조립 로직
+- JOOQ 결과를 플랫 리스트로 받음
+- Map<Long, OrgNode>으로 인덱싱
+- parent_id 기준으로 children 연결
+- organization_id 기준으로 members 연결
+- 루트 노드(parent_id IS NULL)만 반환
+
+---
+
+### 결과 비교
+| 항목     | Before (JPA)       | After (JOOQ)       |
+|----------|--------------------|--------------------|
+| 쿼리 수  | 조직 수 x 2 + 1    | 1회 (CTE)          |
+| 방식     | 재귀 LAZY 로딩     | 한 방 조회 + 조립  |
+| 코드량   | 적음 (JPA 마법)    | 조립 로직 필요     |
+| 성능     | 조직 많으면 느림   | 항상 일정          |
+
+### 파일 생성 예상
+- OrganizationQueryRepository.java (JOOQ 조회 전용)
+- build.gradle 수정 (jooq-codegen 플러그인)
+- OrganizationService.java 수정 (findAll 변경)

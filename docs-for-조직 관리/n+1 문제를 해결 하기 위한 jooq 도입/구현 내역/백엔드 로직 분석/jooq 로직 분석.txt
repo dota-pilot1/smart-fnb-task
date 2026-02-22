@@ -1,0 +1,219 @@
+## JOOQ 로직 분석 - findAllTree() 완전 해부
+
+
+================================================================
+1. 만들어지는 쿼리 전체
+================================================================
+
+WITH RECURSIVE org_tree (id, name, parent_id, sort_order, depth) AS (
+
+    -- [기저 조건] 루트 조직만 가져옴 (parent_id가 없는 것)
+    SELECT id, name, parent_id, sort_order, depth
+    FROM organizations
+    WHERE parent_id IS NULL
+
+    UNION ALL
+
+    -- [재귀 조건] 위에서 찾은 조직의 자식들을 반복해서 가져옴
+    SELECT o.id, o.name, o.parent_id, o.sort_order, o.depth
+    FROM organizations o
+    JOIN org_tree ON o.parent_id = org_tree.id
+
+)
+SELECT
+    org_tree.id         AS org_id,
+    org_tree.name       AS org_name,
+    org_tree.parent_id  AS org_parent_id,
+    org_tree.sort_order AS org_sort_order,
+    org_tree.depth      AS org_depth,
+    u.id                AS user_id,
+    u.name              AS user_name,
+    u.email             AS user_email,
+    u.role              AS user_role
+FROM org_tree
+LEFT JOIN users u ON u.organization_id = org_tree.id
+ORDER BY org_tree.depth, org_tree.sort_order, u.name
+
+
+================================================================
+2. WITH RECURSIVE가 뭔지
+================================================================
+
+WITH RECURSIVE는 "DB야, 네가 알아서 반복해"라는 뜻이다.
+Java에서 for문 돌리는 게 아니라 DB 엔진이 내부적으로 반복한다.
+
+원리:
+  DB가 "임시 테이블"을 하나 만들어서 거기에 결과를 쌓아간다.
+
+### 실행 과정을 단계별로 보자
+
+organizations 테이블에 이런 데이터가 있다고 가정:
+  id=1  name=본사     parent_id=NULL
+  id=2  name=개발팀   parent_id=1
+  id=3  name=디자인팀 parent_id=1
+  id=4  name=프론트팀 parent_id=2
+  id=5  name=백엔드팀 parent_id=2
+
+
+[1회차 - 기저 조건 실행]
+  SQL: SELECT ... FROM organizations WHERE parent_id IS NULL
+  결과: 본사 (id=1)
+
+  org_tree 임시 테이블 상태:
+  +----+------+-----------+
+  | id | name | parent_id |
+  +----+------+-----------+
+  |  1 | 본사 | NULL      |
+  +----+------+-----------+
+
+
+[2회차 - 재귀 조건 실행]
+  SQL: SELECT o.* FROM organizations o JOIN org_tree ON o.parent_id = org_tree.id
+  해석: organizations에서 parent_id가 org_tree에 있는 id(=1)인 것을 찾아라
+  결과: 개발팀 (parent_id=1), 디자인팀 (parent_id=1)
+
+  org_tree 임시 테이블 상태:
+  +----+--------+-----------+
+  | id | name   | parent_id |
+  +----+--------+-----------+
+  |  1 | 본사   | NULL      |
+  |  2 | 개발팀 | 1         |
+  |  3 | 디자인팀| 1         |
+  +----+--------+-----------+
+
+
+[3회차 - 재귀 조건 또 실행]
+  이번엔 org_tree에 새로 추가된 id=2, id=3을 기준으로 찾음
+  해석: parent_id가 2 또는 3인 것을 찾아라
+  결과: 프론트팀 (parent_id=2), 백엔드팀 (parent_id=2)
+
+  org_tree 임시 테이블 상태:
+  +----+----------+-----------+
+  | id | name     | parent_id |
+  +----+----------+-----------+
+  |  1 | 본사     | NULL      |
+  |  2 | 개발팀   | 1         |
+  |  3 | 디자인팀 | 1         |
+  |  4 | 프론트팀 | 2         |
+  |  5 | 백엔드팀 | 2         |
+  +----+----------+-----------+
+
+
+[4회차 - 재귀 조건 또 실행]
+  id=4, id=5를 기준으로 찾음
+  결과: 없음 → 종료!
+
+핵심:
+  - DB가 "더 이상 새로운 행이 없을 때까지" 알아서 반복함
+  - Java에서 루프 안 돌아도 됨
+  - 깊이가 100단계여도 DB가 알아서 처리
+  - 이 전체가 쿼리 1회로 실행됨 (DB 내부 반복이지 쿼리 여러 번이 아님)
+
+
+================================================================
+3. CTE 결과가 플랫 리스트라는 것
+================================================================
+
+"플랫 리스트"란 트리 구조가 아니라 그냥 한 줄 한 줄 나열된 것.
+
+실제 조직 구조 (트리):
+  본사
+  ├── 개발팀
+  │   ├── 프론트팀
+  │   └── 백엔드팀
+  └── 디자인팀
+
+DB가 돌려주는 결과 (플랫 리스트):
+  +--------+----------+-----------+--------+-----------+---------+
+  | org_id | org_name | parent_id | user_id| user_name | user_role|
+  +--------+----------+-----------+--------+-----------+---------+
+  |      1 | 본사     | NULL      | NULL   | NULL      | NULL    |
+  |      2 | 개발팀   | 1         | 10     | 홍길동    | USER    |
+  |      2 | 개발팀   | 1         | 11     | 김철수    | ADMIN   |
+  |      3 | 디자인팀 | 1         | 12     | 이영희    | USER    |
+  |      4 | 프론트팀 | 2         | NULL   | NULL      | NULL    |
+  |      5 | 백엔드팀 | 2         | NULL   | NULL      | NULL    |
+  +--------+----------+-----------+--------+-----------+---------+
+
+주목할 점:
+  - 트리 형태가 아니라 그냥 행(row)의 나열
+  - 개발팀(id=2)이 2번 나옴 → 유저가 2명이라서 (LEFT JOIN 때문)
+  - 프론트팀, 백엔드팀은 유저가 없어서 user 쪽이 NULL
+  - parent_id 컬럼에 "누가 부모인지" 정보만 들어있음
+  - 이 parent_id를 보고 Java에서 트리로 조립하는 거임 (assembleTree)
+
+왜 DB는 트리를 못 돌려주나:
+  - SQL 결과는 항상 "행과 열"의 테이블 형태
+  - 중첩 JSON 같은 트리 구조는 SQL 표준이 아님
+  - 그래서 플랫하게 받아서 Java에서 조립하는 것
+
+
+================================================================
+4. LEFT JOIN으로 유저를 한 방에 붙이는 것
+================================================================
+
+CTE(org_tree)만으로는 조직 정보만 있고 유저 정보가 없음.
+LEFT JOIN users로 유저를 붙임.
+
+왜 LEFT JOIN인가 (INNER JOIN이 아닌 이유):
+  - 유저가 한 명도 없는 조직도 결과에 나와야 함
+  - INNER JOIN이면 유저 없는 조직이 사라짐
+  - LEFT JOIN이면 유저 없는 조직도 나오되 user 컬럼이 NULL
+
+  LEFT JOIN 결과:
+    본사      → user_id: NULL  (유저 없어도 나옴)
+    개발팀    → user_id: 10    (홍길동)
+    개발팀    → user_id: 11    (김철수) ← 같은 조직이 유저 수만큼 반복
+    디자인팀  → user_id: 12    (이영희)
+    프론트팀  → user_id: NULL  (유저 없어도 나옴)
+    백엔드팀  → user_id: NULL  (유저 없어도 나옴)
+
+
+================================================================
+5. Java JOOQ 코드 ↔ SQL 1:1 대응
+================================================================
+
+Java:                                      SQL:
+─────────────────────────────────────────  ─────────────────────────────
+var orgTree = name("org_tree")             WITH RECURSIVE org_tree
+
+.fields("id", "name", ...)                 (id, name, parent_id, ...)
+
+.as(                                       AS (
+  select(field("id"), ...)                   SELECT id, ...
+  .from(table("organizations"))              FROM organizations
+  .where(field("parent_id").isNull())        WHERE parent_id IS NULL
+
+  .unionAll(                                 UNION ALL
+
+    select(field("o.id"), ...)               SELECT o.id, ...
+    .from(table("organizations").as("o"))    FROM organizations o
+    .join(table(orgTree))                    JOIN org_tree
+    .on(field("o.parent_id")                 ON o.parent_id
+        .eq(field("org_tree.id")))               = org_tree.id
+  )
+)                                          )
+
+dsl.with(orgTreeCte)                       WITH ... (위의 CTE 선언)
+.select(                                   SELECT
+  field("org_tree.id").as("org_id"),          org_tree.id AS org_id,
+  ...                                        ...
+  field("u.name").as("user_name"),           u.name AS user_name,
+)
+.from(table(orgTree))                      FROM org_tree
+.leftJoin(table("users").as("u"))          LEFT JOIN users u
+.on(field("u.organization_id")             ON u.organization_id
+    .eq(field("org_tree.id")))                 = org_tree.id
+.orderBy(...)                              ORDER BY ...
+.fetch()                                   -- 실행
+
+
+================================================================
+6. 정리 - 이해 순서
+================================================================
+
+1단계: WITH RECURSIVE = DB가 알아서 반복해서 전체 트리를 한 번에 가져옴
+2단계: 결과는 플랫 리스트 (행의 나열, 트리가 아님)
+3단계: LEFT JOIN으로 유저도 같이 가져옴 (유저 없는 조직도 포함)
+4단계: Java에서 parent_id를 보고 Map으로 트리 조립 (assembleTree)
+5단계: JOOQ 코드는 위 SQL을 Java 메서드로 1:1 옮긴 것

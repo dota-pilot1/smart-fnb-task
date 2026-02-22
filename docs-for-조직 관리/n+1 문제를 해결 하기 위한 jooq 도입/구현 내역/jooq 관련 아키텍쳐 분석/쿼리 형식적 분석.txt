@@ -1,0 +1,73 @@
+WITH RECURSIVE org_tree (id, name, parent_id, sort_order, depth) AS (
+
+    -- [기저 조건] 루트 조직만 가져옴 (parent_id가 없는 것)
+    SELECT id, name, parent_id, sort_order, depth
+    FROM organizations
+    WHERE parent_id IS NULL
+
+    UNION ALL
+
+    -- [재귀 조건] 위에서 찾은 조직의 자식들을 반복해서 가져옴
+    SELECT o.id, o.name, o.parent_id, o.sort_order, o.depth
+    FROM organizations o
+    JOIN org_tree ON o.parent_id = org_tree.id
+
+)
+SELECT
+    org_tree.id         AS org_id,
+    org_tree.name       AS org_name,
+    org_tree.parent_id  AS org_parent_id,
+    org_tree.sort_order AS org_sort_order,
+    org_tree.depth      AS org_depth,
+    u.id                AS user_id,
+    u.name              AS user_name,
+    u.email             AS user_email,
+    u.role              AS user_role
+FROM org_tree
+LEFT JOIN users u ON u.organization_id = org_tree.id
+ORDER BY org_tree.depth, org_tree.sort_order, u.name
+
+
+분석1:
+WITH RECURSIVE 이름 AS (
+    루트 조회
+    UNION ALL
+    자식 조회 (JOIN 자기 자신)
+)
+의 뜻:
+UNION ALL = "추가로 조회한 거 아래에 합쳐라"
+RECURSIVE = "더 없을 때까지 반복해라"
+
+
+분석2:
+WITH RECURSIVE
+임시로 만들되 현재 테이블을 스스로 참조하는것을 허하겠다
+A UNION ALL B A 를 기준으로 B 를 모조리 가져와라 전자를 기준으로 다 가져와라
+
+
+분석3:
+Java → DB로 날리는 쿼리: 1개
+
+DB 내부에서:
+  1) WITH RECURSIVE로 org_tree 만들고 (내부 반복)
+  2) org_tree에 users LEFT JOIN 하고
+  3) 결과 돌려줌
+
+Java ← DB에서 받는 결과: 1번
+
+
+tipp:
+UNION ALL = "추가로 조회한 거 아래에 합쳐라"
+RECURSIVE = "더 없을 때까지 반복해라"
+```
+
+이 두 개가 세트로 움직이는 거. UNION ALL 혼자서는 1번만 합치고, RECURSIVE가 붙어야 반복해서 계속 합침.
+
+쉽지 않은 게 정상이에요. WITH RECURSIVE는 SQL에서도 **고급 문법**에 속하고, 실무에서도 대부분 복붙해서 씁니다. 패턴이 항상 같으니까:
+
+```sql
+WITH RECURSIVE 이름 AS (
+    루트 조회
+    UNION ALL
+    자식 조회 (JOIN 자기 자신)
+)

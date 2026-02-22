@@ -1,0 +1,122 @@
+## 추가된 로직 및 가져다 쓰는곳
+
+### 추가된 파일 (1개)
+
+OrganizationQueryRepository.java
+  위치: organization/infrastructure/
+  역할: JOOQ로 조직 트리 조회 전용
+
+이 파일이 하는 일 2가지:
+  1) SQL 작성 - WITH RECURSIVE CTE + LEFT JOIN users (쿼리 1회)
+  2) 트리 조립 - 플랫 결과를 Map 기반으로 부모-자식 연결
+
+
+### 수정된 파일 (1개)
+
+OrganizationService.java
+  변경 내용: findAll()에서 JPA 대신 JOOQ 호출로 교체
+
+변경 전:
+```java
+private final OrganizationRepository organizationRepository;
+
+public List<OrganizationTreeResponse> findAll() {
+    return organizationRepository.findByParentIsNull().stream()  // JPA
+        .map(OrganizationTreeResponse::from)                     // N+1 발생
+        .toList();
+}
+```
+
+변경 후:
+```java
+private final OrganizationRepository organizationRepository;       // CUD용 (JPA)
+private final OrganizationQueryRepository organizationQueryRepository; // 조회용 (JOOQ)
+
+public List<OrganizationTreeResponse> findAll() {
+    return organizationQueryRepository.findAllTree();  // 쿼리 1회
+}
+```
+
+
+### 호출 흐름 (전체)
+
+```
+[프론트] GET /api/organizations
+    ↓
+[Controller] OrganizationController.findAll()
+    ↓
+[Service] OrganizationService.findAll()
+    ↓
+[JOOQ] OrganizationQueryRepository.findAllTree()   ← 추가된 파일
+    ↓
+    ├── DSLContext.with(CTE).select(...).fetch()     → SQL 1회 실행
+    ↓
+    ├── assembleTree(rows)                           → 플랫 → 트리 조립
+    │   ├── 1) Map<Long, TempOrg>에 조직 수집
+    │   ├── 2) parent_id로 부모-자식 연결
+    │   └── 3) TempOrg → OrganizationTreeResponse 변환
+    ↓
+[응답] List<OrganizationTreeResponse> (트리 JSON)
+```
+
+
+### OrganizationQueryRepository 내부 구조
+
+```
+findAllTree()
+│
+├── CTE 정의 (30~56줄)
+│   기저 조건: SELECT * FROM organizations WHERE parent_id IS NULL
+│   재귀 조건: JOIN org_tree ON o.parent_id = org_tree.id
+│
+├── 메인 쿼리 (58~83줄)
+│   CTE 결과에 users LEFT JOIN
+│   → 조직 컬럼 5개 + 유저 컬럼 4개 = 총 9개 컬럼
+│   → fetch()로 실행 → Result<Record9> 반환
+│
+├── assembleTree() (88~134줄)
+│   ├── orgMap에 조직 수집 (LinkedHashMap, 순서 유지)
+│   ├── 유저가 있으면 해당 조직의 members에 추가
+│   ├── parentId로 부모-자식 연결
+│   └── 루트 노드만 추출
+│
+├── toResponse() (136~145줄)
+│   TempOrg → OrganizationTreeResponse 재귀 변환
+│
+└── TempOrg (148~166줄)
+    조립용 임시 객체 (id, name, parentId, children, members)
+```
+
+
+### CUD는 어디서 처리하나 (변경 없음)
+
+조회만 JOOQ로 바꿨고 나머지는 전부 기존 JPA 그대로:
+
+```
+createRoot()   → organizationRepository.save()         (JPA)
+createChild()  → organizationRepository.save()         (JPA)
+updateName()   → org.updateName() + dirty checking     (JPA)
+delete()       → organizationRepository.deleteById()   (JPA)
+assignUser()   → user.updateOrganization() + dirty checking (JPA)
+findAll()      → organizationQueryRepository.findAllTree() (JOOQ) ← 여기만 변경
+```
+
+
+### 왜 코드가 길어졌나
+
+JPA 방식 (3줄로 끝남, 대신 N+1):
+```java
+organizationRepository.findByParentIsNull().stream()
+    .map(OrganizationTreeResponse::from)  // JPA가 LAZY로 재귀 로딩
+    .toList();
+```
+
+JOOQ 방식 (90줄, 대신 쿼리 1회):
+```
+SQL 작성       → JPA가 자동 생성해주던 쿼리를 직접 작성 (CTE)
+트리 조립       → JPA가 엔티티 관계로 자동 해주던 걸 Map으로 직접 조립
+```
+
+JPA의 3줄은 N+1 쿼리를 대가로 JPA가 대신 해준 것.
+JOOQ의 90줄은 그 대가 없이 직접 하는 것.
+코드는 늘어났지만 쿼리는 항상 1회로 고정.

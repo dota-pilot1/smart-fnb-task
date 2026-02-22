@@ -1,0 +1,151 @@
+## JOOQ는 어떻게 구성되나
+
+### 1. JOOQ란
+- Java Object Oriented Querying
+- SQL을 Java 코드로 타입 안전하게 작성하는 라이브러리
+- JPA처럼 객체-관계 매핑(ORM)이 아니라 SQL 자체를 Java DSL로 표현
+- "SQL을 잘 쓰되, 컴파일 타임에 오류를 잡겠다"는 철학
+
+
+### 2. 핵심 구성 요소
+
+#### DSLContext
+- JOOQ의 진입점. 모든 쿼리가 여기서 시작됨
+
+- Spring Boot에서 spring-boot-starter-jooq를 넣으면 자동으로 빈 등록
+
+- DataSource를 기반으로 DB 방언(PostgreSQL 등)을 자동 감지
+
+```java
+@RequiredArgsConstructor
+public class OrganizationQueryRepository {
+    private final DSLContext dsl;  // 스프링이 자동 주입
+}
+```
+
+#### 쿼리 빌드 방식 (2가지)
+1) 코드 생성 방식 (Codegen)
+   - DB 스키마에서 Java 클래스 자동 생성 (ORGANIZATIONS, USERS 등)
+   - 타입 안전성 최고, 컬럼명 오타 컴파일 에러
+   - 단, codegen 플러그인 설정 + DB 접속 필요
+   ```java
+   dsl.selectFrom(ORGANIZATIONS).where(ORGANIZATIONS.PARENT_ID.isNull())
+   ```
+
+2) 문자열 기반 방식 (현재 프로젝트에서 사용)
+   - codegen 없이 field(), table()로 직접 지정
+   - 설정이 간단하고 바로 사용 가능
+   - 컬럼명 오타는 런타임에만 발견됨
+   ```java
+   dsl.select(field("id", Long.class)).from(table("organizations"))
+   ```
+
+### 3. 현재 프로젝트 구성
+
+#### 의존성 (build.gradle)
+```gradle
+implementation 'org.springframework.boot:spring-boot-starter-jooq'
+```
+- 이것만으로 DSLContext 빈이 자동 등록됨
+- 별도 설정 파일 불필요 (Spring Boot 자동 구성)
+
+#### 동작 원리
+```
+Spring Boot 시작
+  → DataSource 빈 생성 (PostgreSQL)
+  → JooqAutoConfiguration 실행
+  → DSLContext 빈 생성 (PostgreSQL 방언 자동 감지)
+  → OrganizationQueryRepository에 주입
+```
+
+#### 프로젝트 아키텍처에서의 위치
+```
+presentation (Controller)
+      ↓
+application (Service)
+      ↓ findAll()
+infrastructure
+  ├── JpaOrganizationRepository  → CUD (생성/수정/삭제)
+  └── OrganizationQueryRepository → Read (JOOQ, 조회 전용)
+```
+
+### 4. JOOQ 쿼리 작성 구조 (OrganizationQueryRepository 기준)
+
+#### CTE 정의 (WITH RECURSIVE)
+```java
+var orgTree = name("org_tree");                    // CTE 이름
+var orgTreeCte = orgTree
+    .fields("id", "name", "parent_id", ...)        // CTE 컬럼 정의
+    .as(
+        select(...)                                 // 기저 조건 (루트)
+            .from(table("organizations"))
+            .where(field("parent_id").isNull())
+        .unionAll(
+            select(...)                             // 재귀 조건
+                .from(table("organizations").as("o"))
+                .join(table(orgTree))               // CTE 자기 참조
+                .on(field("o.parent_id").eq(field("org_tree.id")))
+        )
+    );
+```
+
+#### 메인 쿼리
+```java
+dsl.with(orgTreeCte)                               // CTE 선언
+    .select(...)                                    // 필요한 컬럼
+    .from(table(orgTree))                           // CTE를 테이블처럼 사용
+    .leftJoin(table("users").as("u"))               // 유저 조인
+    .on(field("u.organization_id").eq(field("org_tree.id")))
+    .orderBy(...)
+    .fetch();                                       // 실행 → Result 반환
+```
+
+#### 결과 처리
+```java
+Result<? extends Record> rows = ...fetch();
+for (Record row : rows) {
+    row.get("org_id", Long.class);                  // 컬럼별 값 추출
+    row.get("user_name", String.class);
+}
+```
+
+### 5. JPA와의 역할 분담
+
+| 역할 | 담당 | 이유 |
+|------|------|------|
+| 조직 생성 | JPA | 엔티티 관계 자동 관리 (cascade, orphanRemoval) |
+| 조직 수정 | JPA | dirty checking으로 save() 불필요 |
+| 조직 삭제 | JPA | cascade 삭제 + 유저 해제 로직 |
+| 트리 조회 | JOOQ | WITH RECURSIVE CTE 1회 쿼리 |
+
+### 6. JOOQ vs JPA 쿼리 비교
+
+같은 "전체 트리 조회"를 하는데:
+
+JPA: findByParentIsNull() → LAZY 로딩 재귀 → 쿼리 N*2+1회
+```
+SELECT * FROM organizations WHERE parent_id IS NULL
+SELECT * FROM organizations WHERE parent_id = 1
+SELECT * FROM users WHERE organization_id = 1
+SELECT * FROM organizations WHERE parent_id = 2
+SELECT * FROM users WHERE organization_id = 2
+... (반복)
+```
+
+JOOQ: WITH RECURSIVE + LEFT JOIN → 쿼리 1회
+```sql
+WITH RECURSIVE org_tree AS (
+  SELECT * FROM organizations WHERE parent_id IS NULL
+  UNION ALL
+  SELECT o.* FROM organizations o JOIN org_tree t ON o.parent_id = t.id
+)
+SELECT t.*, u.id, u.name, u.email, u.role
+FROM org_tree t LEFT JOIN users u ON u.organization_id = t.id
+```
+
+### 7. 핵심 정리
+- JOOQ는 SQL을 Java로 쓰는 도구 (ORM이 아님)
+- spring-boot-starter-jooq 하나면 DSLContext 자동 주입
+- codegen 없이도 field()/table()로 바로 사용 가능
+- CTE, 윈도우 함수, 서브쿼리 등 복잡한 SQL에 강점
+- JPA의 CUD + JOOQ의 Read 조합이 실무 베스트 패턴

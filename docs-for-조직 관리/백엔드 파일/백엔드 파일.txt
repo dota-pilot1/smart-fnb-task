@@ -1,0 +1,48 @@
+## 조직 관리 백엔드 파일 구조
+
+### 디렉토리
+com.smartfnb.organization/
+├── domain/
+│   ├── Organization.java              # 조직 엔티티
+│   └── OrganizationRepository.java    # 도메인 리포지토리 인터페이스
+├── infrastructure/
+│   └── JpaOrganizationRepository.java # JPA 구현체
+├── application/
+│   ├── OrganizationService.java       # 비즈니스 로직
+│   └── dto/
+│       ├── OrganizationTreeResponse.java  # 트리 응답 (재귀)
+│       ├── MemberResponse.java            # 유저 응답
+│       ├── CreateOrganizationRequest.java # 조직 생성 요청
+│       ├── UpdateNameRequest.java         # 이름 수정 요청
+│       ├── UpdateUserRoleRequest.java     # 권한 변경 요청
+│       └── AssignUserRequest.java         # 유저 배정 요청
+└── presentation/
+    └── OrganizationController.java    # REST 컨트롤러
+
+### 수정된 기존 파일
+- User.java: organization 필드 추가, updateRole(), updateOrganization() 메서드 추가
+- UserRepository.java: findByOrganization(), findByOrganizationIsNull(), findAll() 추가
+- SecurityConfig.java: /api/organizations/** permitAll 추가
+
+### Organization 엔티티 (organizations 테이블)
+- id (BIGSERIAL PK)
+- name (VARCHAR 100, NOT NULL)
+- parent_id (FK → organizations.id, self-referential)
+- sort_order (INT)
+- depth (INT)
+- created_at, updated_at (TIMESTAMP)
+- UNIQUE(parent_id, name)
+- 관계: @OneToMany children (cascade ALL, orphanRemoval), @OneToMany members (User)
+
+### User 엔티티 변경사항
+- 추가 필드: @ManyToOne organization (organization_id FK)
+- 추가 메서드: updateRole(Role), updateOrganization(Organization)
+
+### DTO 구조
+OrganizationTreeResponse:
+  - id, name, sortOrder, depth
+  - children: List<OrganizationTreeResponse>  (재귀)
+  - members: List<MemberResponse>
+
+MemberResponse:
+  - id, name, email, role

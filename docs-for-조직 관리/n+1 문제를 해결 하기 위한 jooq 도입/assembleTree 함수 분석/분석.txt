@@ -1,0 +1,93 @@
+1. assembleTree 함수 분석
+
+        // 맵으로 다시 구조화 하려 함
+        // 이유는 플랫 리스트는 트리 메뉴 출력에 적절한 형식이 아니라서
+        Map<Long, TempOrg> orgMap = new LinkedHashMap<>();
+
+        // 반복문으로 각 행정보를 받아와서
+        for (Record row : rows) {
+
+            // 조직 아이디를 가져와서
+            Long orgId = row.get("org_id", Long.class);
+
+            // 조직 아이디를 키로 가지면서 중복 제거된 맵 객체로 바꿈
+            orgMap.computeIfAbsent(orgId, id ->
+                new TempOrg(
+                    id,
+                    row.get("org_name", String.class),
+                    row.get("org_parent_id", Long.class),
+                    row.get("org_sort_order", Integer.class),
+                    row.get("org_depth", Integer.class)
+                )
+            );
+
+            // 플랫 리스트에서 유저 아이디가 있다면
+            Long userId = row.get("user_id", Long.class);
+
+            // 조직 맵 객체의 members 에 추가
+            if (userId != null) {
+                orgMap
+                    .get(orgId)
+                    .members.add(
+                        new MemberResponse(
+                            userId,
+                            row.get("user_name", String.class),
+                            row.get("user_email", String.class),
+                            Role.valueOf(row.get("user_role", String.class))
+                        )
+                    );
+            }
+        }
+
+
+2.
+    public List<OrganizationTreeResponse> findAll() {
+        return organizationQueryRepository.findAllTree();
+    }
+'''
+
+[
+  {
+    "id": 1,
+    "name": "본사",
+    "children": [
+      {
+        "id": 2,
+        "name": "개발팀",
+        "children": [
+          { "id": 4, "name": "프론트팀", "children": [], "members": [] },
+          { "id": 5, "name": "백엔드팀", "children": [], "members": [] }
+        ],
+        "members": [
+          { "id": 10, "name": "홍길동", "email": "hong@...", "role": "USER" },
+          { "id": 11, "name": "김철수", "email": "kim@...", "role": "ADMIN" }
+        ]
+      },
+      {
+        "id": 3,
+        "name": "디자인팀",
+        "children": [],
+        "members": [
+          { "id": 12, "name": "이영희", "email": "lee@...", "role": "USER" }
+        ]
+      }
+    ],
+    "members": []
+  }
+]
+
+쿼리 형식적 분석:
+UNION ALL = "추가로 조회한 거 아래에 합쳐라"
+RECURSIVE = "더 없을 때까지 반복해라"
+```
+
+이 두 개가 세트로 움직이는 거. UNION ALL 혼자서는 1번만 합치고, RECURSIVE가 붙어야 반복해서 계속 합침.
+
+쉽지 않은 게 정상이에요. WITH RECURSIVE는 SQL에서도 **고급 문법**에 속하고, 실무에서도 대부분 복붙해서 씁니다. 패턴이 항상 같으니까:
+
+```sql
+WITH RECURSIVE 이름 AS (
+    루트 조회
+    UNION ALL
+    자식 조회 (JOIN 자기 자신)
+)
