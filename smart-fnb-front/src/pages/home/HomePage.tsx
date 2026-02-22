@@ -2,7 +2,7 @@ import { useStore } from "@tanstack/react-store";
 import { sessionStore } from "@/entities/session/model/session-store";
 
 export function HomePage() {
-  const token = useStore(sessionStore, (s) => s.token);
+  const token = useStore(sessionStore, (s) => s.accessToken);
   const displayName = useStore(sessionStore, (s) => s.displayName);
 
   return (

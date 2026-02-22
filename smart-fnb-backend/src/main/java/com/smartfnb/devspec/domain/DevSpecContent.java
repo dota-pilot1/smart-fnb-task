@@ -32,7 +32,7 @@ public class DevSpecContent {
     @Column(columnDefinition = "TEXT")
     private String content;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "integer default 0")
     private Integer sortOrder = 0;
 
     @CreationTimestamp

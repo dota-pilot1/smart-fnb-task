@@ -3,33 +3,50 @@ import {
   getStoredToken,
   setStoredToken,
   removeStoredToken,
+  getStoredRefreshToken,
+  setStoredRefreshToken,
+  removeStoredRefreshToken,
   getStoredDisplayName,
   setStoredDisplayName,
   removeStoredDisplayName,
 } from "@/shared/lib/storage";
 
 interface SessionState {
-  token: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
   displayName: string | null;
 }
 
 export const sessionStore = new Store<SessionState>({
-  token: getStoredToken(),
+  accessToken: getStoredToken(),
+  refreshToken: getStoredRefreshToken(),
   displayName: getStoredDisplayName(),
 });
 
-export function setSession(token: string, displayName: string) {
-  setStoredToken(token);
+export function setSession(
+  accessToken: string,
+  refreshToken: string,
+  displayName: string,
+) {
+  setStoredToken(accessToken);
+  setStoredRefreshToken(refreshToken);
   setStoredDisplayName(displayName);
-  sessionStore.setState((prev) => ({ ...prev, token, displayName }));
+  sessionStore.setState((prev) => ({
+    ...prev,
+    accessToken,
+    refreshToken,
+    displayName,
+  }));
 }
 
 export function clearSession() {
   removeStoredToken();
+  removeStoredRefreshToken();
   removeStoredDisplayName();
   sessionStore.setState((prev) => ({
     ...prev,
-    token: null,
+    accessToken: null,
+    refreshToken: null,
     displayName: null,
   }));
 }

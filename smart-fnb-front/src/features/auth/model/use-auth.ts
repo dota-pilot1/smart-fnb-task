@@ -6,8 +6,12 @@ import {
   clearSession,
 } from "@/entities/session/model/session-store";
 
+// ─────────────────────────────────────────────────────────────────
+// 타입
+// ─────────────────────────────────────────────────────────────────
 interface AuthResponse {
-  token: string;
+  accessToken: string;
+  refreshToken: string;
   name: string;
 }
 
@@ -22,6 +26,9 @@ interface SignupRequest {
   name: string;
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Hook
+// ─────────────────────────────────────────────────────────────────
 export function useAuth() {
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +42,7 @@ export function useAuth() {
         method: "POST",
         body: JSON.stringify(data),
       });
-      setSession(res.token, res.name);
+      setSession(res.accessToken, res.refreshToken, res.name);
       navigate("/");
     } catch (e) {
       if (e instanceof ApiClientError) {
@@ -56,7 +63,7 @@ export function useAuth() {
         method: "POST",
         body: JSON.stringify(data),
       });
-      setSession(res.token, res.name);
+      setSession(res.accessToken, res.refreshToken, res.name);
       navigate("/");
     } catch (e) {
       if (e instanceof ApiClientError) {
@@ -69,9 +76,16 @@ export function useAuth() {
     }
   }
 
-  function logout() {
-    clearSession();
-    navigate("/login");
+  async function logout() {
+    try {
+      // 서버에 로그아웃 요청 → DB에서 refresh token 삭제
+      await apiClient("/api/auth/logout", { method: "POST" });
+    } catch {
+      // 서버 오류여도 로컬 세션은 무조건 정리
+    } finally {
+      clearSession();
+      navigate("/login");
+    }
   }
 
   return { login, signup, logout, error, loading };

@@ -80,12 +80,7 @@ export function DevSpecDetail({
         <div className="flex-1 flex flex-col overflow-auto">
           <ContentTabs activeTab={activeTab} onTabChange={handleTabChange} />
           <div className="flex-1 overflow-auto">
-            {activeTab === "FIGMA" && (
-              <FigmaContent
-                content={contentValue}
-                onSave={(c) => onSaveContent("FIGMA", c)}
-              />
-            )}
+            {activeTab === "FIGMA" && <FigmaContent devSpecId={detail.id} />}
             {activeTab === "CHECKLIST" && (
               <ChecklistContent
                 content={contentValue}

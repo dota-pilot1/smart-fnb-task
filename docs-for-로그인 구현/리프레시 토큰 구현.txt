@@ -1,0 +1,179 @@
+================================================================
+  리프레시 토큰(Refresh Token) 구현 정리
+  프로젝트: smart-fnb-task
+  작성일: 2026-02-22
+================================================================
+
+── 왜 리프레시 토큰이 필요한가? ───────────────────────────────
+
+Access Token만 사용하면 두 가지 문제가 생긴다.
+
+  1. 보안 문제
+     - 만료 시간을 길게 설정하면, 탈취당했을 때 오랫동안 악용 가능
+  2. UX 문제
+     - 만료 시간을 짧게 설정하면, 사용자가 자주 다시 로그인해야 함
+
+해결책: 토큰을 두 종류로 분리한다.
+
+  ┌──────────────┬───────────────┬───────────────────────────────────┐
+  │              │ 만료 시간      │ 역할                               │
+  ├──────────────┼───────────────┼───────────────────────────────────┤
+  │ Access Token  │ 짧음 (1시간)  │ API 요청마다 Authorization 헤더 전달 │
+  │ Refresh Token │ 김 (7일)      │ Access Token 만료 시 재발급 요청용  │
+  └──────────────┴───────────────┴───────────────────────────────────┘
+
+Access Token이 만료되면 사용자에게 다시 로그인을 요구하는 대신,
+Refresh Token으로 조용히 Access Token을 재발급받는다.
+
+
+── 전체 흐름 ────────────────────────────────────────────────────
+
+  [1] 로그인
+      POST /api/auth/login
+      → 서버가 accessToken + refreshToken 동시 발급
+      → refreshToken은 DB(refresh_tokens 테이블)에도 저장
+      → 프론트는 둘 다 localStorage에 저장
+
+  [2] 일반 API 요청
+      → Authorization: Bearer {accessToken} 헤더에 담아 전송
+
+  [3] Access Token 만료 (401 응답)
+      → client.ts가 자동으로 POST /api/auth/refresh 호출
+      → 서버가 refreshToken 유효성 확인 (DB 조회 + JWT 서명 검증 + 만료 확인)
+      → 새 accessToken + 새 refreshToken 발급 (Rotate 방식)
+      → 프론트는 localStorage 갱신 후 원래 요청 재시도
+
+  [4] Refresh Token도 만료된 경우
+      → 서버가 refreshToken을 DB에서 삭제 후 에러 응답
+      → 프론트가 clearSession() 호출 후 /login 으로 강제 이동
+
+  [5] 로그아웃
+      POST /api/auth/logout
+      → 서버가 DB에서 refreshToken 삭제 (이후 재발급 불가)
+      → 프론트가 localStorage 전체 정리
+
+
+── Token Rotation(토큰 로테이션)이란? ───────────────────────────
+
+  Refresh Token을 사용할 때마다 새 Refresh Token으로 교체하는 방식.
+
+  이유:
+  - Refresh Token이 탈취되었어도 이미 사용(rotate)된 토큰이라면
+    서버에서 무효 처리 가능 (DB의 token 값이 달라짐)
+  - 정상 사용자가 먼저 rotate하면, 공격자의 토큰은 더 이상 유효하지 않음
+
+  동작:
+    로그인/refresh 요청 시:
+      stored.rotate(newToken, refreshExpirationMs);
+    → DB의 토큰 컬럼을 새 값으로 덮어씀
+
+
+── 백엔드 구현 파일 목록 ─────────────────────────────────────────
+
+  [신규 생성]
+  - user/domain/RefreshToken.java
+      JPA 엔티티. userId, token, expiresAt 컬럼.
+      rotate() 메서드로 토큰 교체.
+      isExpired() 로 만료 여부 확인.
+
+  - user/domain/RefreshTokenRepository.java
+      도메인 인터페이스. save / findByToken / findByUserId / deleteByUserId
+
+  - user/infrastructure/JpaRefreshTokenRepository.java
+      JPA 구현체. Spring Data JPA가 쿼리 자동 생성.
+
+  - user/application/dto/RefreshRequest.java
+      { refreshToken: String } 요청 DTO
+
+  [수정된 파일]
+  - global/security/JwtProvider.java
+      generateRefreshToken(email) 메서드 추가
+      refresh-expiration-ms 설정값 주입
+
+  - user/application/dto/AuthResponse.java
+      record AuthResponse(String accessToken, String refreshToken, String name)
+      (기존 token → accessToken 으로 변경)
+
+  - user/application/AuthService.java
+      signup / login → issueTokens() 공통 메서드로 토큰 발급
+      refresh() → DB 조회 → 만료 확인 → JWT 검증 → Rotate → 새 토큰 반환
+      logout() → refreshTokenRepository.deleteByUserId()
+
+  - user/presentation/AuthController.java
+      POST /api/auth/refresh   (토큰 재발급)
+      POST /api/auth/logout    (@AuthenticationPrincipal로 유저 특정 후 삭제)
+
+  - user/domain/UserRepository.java
+      findById(Long id) 추가
+
+  - application.properties
+      app.jwt.expiration-ms=3600000        (Access Token 1시간)
+      app.jwt.refresh-expiration-ms=604800000  (Refresh Token 7일)
+
+
+── 프론트엔드 구현 파일 목록 ────────────────────────────────────
+
+  [수정된 파일]
+  - shared/lib/storage.ts
+      getStoredRefreshToken / setStoredRefreshToken / removeStoredRefreshToken 추가
+
+  - entities/session/model/session-store.ts
+      SessionState에 refreshToken 추가
+      setSession(accessToken, refreshToken, displayName) 으로 시그니처 변경
+      clearSession()에서 refreshToken도 함께 삭제
+
+  - shared/api/client.ts          ← 핵심!
+      rawFetch() - 순수 fetch 래퍼 (재시도 없음)
+      tryRefresh() - refresh 호출 + isRefreshing 플래그로 중복 방지
+      waitQueue[] - 동시 다중 요청이 있을 때 새 토큰을 대기 후 전달
+      apiClient() - 401 시 tryRefresh() 호출 후 자동 재요청
+
+  - features/auth/model/use-auth.ts
+      AuthResponse 타입에 accessToken/refreshToken 반영
+      logout() 에서 POST /api/auth/logout 호출 후 clearSession()
+
+  - widgets/header/ui/AppHeader.tsx
+  - shared/ui/ProtectedRoute.tsx
+  - pages/home/HomePage.tsx
+      s.token → s.accessToken 으로 변경
+
+
+── client.ts의 Race Condition 방지 ──────────────────────────────
+
+  문제 상황:
+    API 요청이 동시에 여러 개 나갔을 때 모두 401이 오면
+    /refresh를 중복으로 여러 번 호출하게 됨
+    → 첫 번째 rotate 이후 나머지 토큰은 모두 무효가 됨
+
+  해결 방법:
+    let isRefreshing = false;  // refresh 진행 중 플래그
+    let waitQueue = [];        // 대기 중인 요청들
+
+    1. 첫 번째 401 → isRefreshing = true, /refresh 호출 시작
+    2. 이후 401들 → isRefreshing이 true이므로 waitQueue에 등록, 대기
+    3. /refresh 완료 → waitQueue에 있는 콜백들에 새 accessToken 전달
+    4. 대기 중이던 요청들이 새 토큰으로 자동 재시도
+
+
+── 복습 포인트 ──────────────────────────────────────────────────
+
+  Q. Refresh Token을 왜 DB(서버)에 저장하는가?
+  A. 클라이언트(localStorage)에만 있으면 강제 만료(로그아웃)가 불가능.
+     서버 DB에 저장해야 "logout = DB에서 삭제" 로 즉시 무효화 가능.
+
+  Q. Refresh Token을 왜 localStorage에 저장하는가?
+  A. 브라우저 새로고침 후에도 세션 유지가 필요하기 때문.
+     보안을 강화하려면 HttpOnly Cookie에 저장하는 방법도 있다.
+     (현재 구현은 학습 목적으로 localStorage 사용)
+
+  Q. isExpired()와 jwtProvider.isValid() 검증을 둘 다 하는 이유?
+  A. - isExpired(): DB 기준 만료 시간 체크 (서버에서 강제 만료 가능)
+     - isValid(): JWT 서명 자체가 유효한지 체크 (위변조 방지)
+     둘 다 통과해야 신뢰 가능한 토큰.
+
+  Q. Token Rotation의 한계는?
+  A. Refresh Token이 탈취 + 정상 사용자보다 먼저 rotate되면
+     오히려 정상 사용자가 로그아웃 상태가 됨.
+     완벽한 해결은 어렵고, 탐지 후 알림 정도로 대응하는 것이 일반적.
+
+================================================================

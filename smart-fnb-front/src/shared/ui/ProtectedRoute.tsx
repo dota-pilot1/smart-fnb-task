@@ -3,7 +3,7 @@ import { Navigate, Outlet } from 'react-router'
 import { sessionStore } from '@/entities/session/model/session-store'
 
 export function ProtectedRoute() {
-  const token = useStore(sessionStore, (s) => s.token)
+  const token = useStore(sessionStore, (s) => s.accessToken)
 
   if (!token) {
     return <Navigate to="/login" replace />

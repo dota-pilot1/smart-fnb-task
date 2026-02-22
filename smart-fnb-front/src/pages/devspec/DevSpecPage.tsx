@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { useStore } from "@tanstack/react-store";
 import { useDevSpecTree } from "@/features/devspec/model/use-devspec-tree";
 import { useDevSpecContent } from "@/features/devspec/model/use-devspec-content";
 import { usePersistedState } from "@/shared/lib/use-persisted-state";
+import { devspecStore, setSelectedNode } from "@/entities/devspec/model/devspec-store";
 import { toast } from "sonner";
 import { DevSpecTree } from "@/features/devspec/ui/DevSpecTree";
 import { DevSpecDetail } from "@/features/devspec/ui/DevSpecDetail";
@@ -29,7 +31,7 @@ export function DevSpecPage() {
     saveContent,
     updateStatus,
   } = useDevSpecContent();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const selectedId = useStore(devspecStore, (s) => s.selectedId);
   const [persistedTreeWidth, setPersistedTreeWidth] = usePersistedState(
     "tree-width",
     288,
@@ -64,6 +66,14 @@ export function DevSpecPage() {
     };
   }, []);
 
+  // localStorage에 저장된 선택 상태 복원: 프로젝트 목록 로드 완료 후 실행
+  useEffect(() => {
+    if (!loading && selectedId) {
+      fetchDetail(selectedId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   const handleTreeResizeStart = () => {
     isResizing.current = true;
     document.body.style.cursor = "col-resize";
@@ -71,7 +81,7 @@ export function DevSpecPage() {
   };
 
   const handleSelect = (node: TreeNode) => {
-    setSelectedId(node.id);
+    setSelectedNode(node.id);
     fetchDetail(node.id);
   };
 
@@ -92,7 +102,7 @@ export function DevSpecPage() {
 
   const handleDelete = async (id: number) => {
     await deleteNode(id);
-    if (selectedId === id) setSelectedId(null);
+    if (selectedId === id) setSelectedNode(null);
   };
 
   if (loading) {

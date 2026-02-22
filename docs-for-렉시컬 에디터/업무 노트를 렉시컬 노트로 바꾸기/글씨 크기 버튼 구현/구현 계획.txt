@@ -1,0 +1,137 @@
+글씨 크기 버튼 구현 계획
+=========================
+
+
+1. 동작 방식
+--------------
+
+  a) 텍스트 선택 → 버튼에 현재 글씨 크기 표시 (예: "16")
+  b) 버튼 클릭 → 드롭다운 열림 → 크기 선택 → 선택된 텍스트에 적용
+  c) 선택 없으면 기본값 "16" 표시
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │ B  I  U │ H1 H2 H3 │ • List  1. List │ [16 ▼]              │
+  └──────────────────────────────────────────────────────────────┘
+                                              ↑
+                                         선택한 텍스트의
+                                         현재 크기 표시
+
+
+2. 필요한 API
+---------------
+
+  @lexical/selection 에서:
+
+  a) $getSelectionStyleValueForProperty(selection, "font-size", "16px")
+     → 현재 선택된 텍스트의 font-size 값을 읽는다
+     → 선택 없으면 기본값 "16px" 반환
+
+  b) $patchStyleText(selection, { "font-size": "24px" })
+     → 선택된 텍스트에 font-size 인라인 스타일 적용
+
+
+3. 구현할 것
+--------------
+
+  수정 파일: ToolbarPlugin.tsx (이것만)
+
+  추가할 것:
+    1) fontSize 상태값 (선택 텍스트의 현재 크기)
+    2) SELECTION_CHANGE_COMMAND에서 fontSize 업데이트
+    3) 드롭다운 UI (select 또는 커스텀)
+    4) 크기 선택 시 $patchStyleText 호출
+
+
+4. 코드 변경 상세
+-------------------
+
+  Step 1. import 추가
+  --------------------
+  import {
+    $patchStyleText,
+    $getSelectionStyleValueForProperty,
+  } from "@lexical/selection";
+
+  (기존에 $setBlocksType만 import 하고 있음 → 여기에 추가)
+
+
+  Step 2. 상태 추가
+  -------------------
+  const [fontSize, setFontSize] = useState("16px");
+
+
+  Step 3. updateToolbar에서 fontSize 읽기
+  -----------------------------------------
+  const updateToolbar = useCallback(() => {
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      if (!$isRangeSelection(selection)) return;
+
+      // 기존 볼드/이탤릭/블록타입 코드...
+
+      // 추가:
+      const size = $getSelectionStyleValueForProperty(
+        selection, "font-size", "16px"
+      );
+      setFontSize(size);
+    });
+  }, [editor]);
+
+
+  Step 4. 크기 변경 함수
+  ------------------------
+  const handleFontSizeChange = (size: string) => {
+    editor.update(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        $patchStyleText(selection, { "font-size": size });
+      }
+    });
+  };
+
+
+  Step 5. 툴바 JSX에 드롭다운 추가
+  ----------------------------------
+  <select
+    value={fontSize}
+    onChange={(e) => handleFontSizeChange(e.target.value)}
+    className="text-xs border border-gray-300 rounded px-1 py-0.5"
+  >
+    <option value="12px">12</option>
+    <option value="14px">14</option>
+    <option value="16px">16</option>
+    <option value="18px">18</option>
+    <option value="20px">20</option>
+    <option value="24px">24</option>
+    <option value="28px">28</option>
+    <option value="32px">32</option>
+  </select>
+
+
+5. 사이즈 옵션
+-----------------
+
+  12px - 작은 글씨 (주석, 캡션)
+  14px - 본문 작은
+  16px - 본문 기본 (default)
+  18px - 본문 큰
+  20px - 소제목
+  24px - 중제목
+  28px - 대제목
+  32px - 최대
+
+
+6. 저장/복원
+--------------
+
+  별도 처리 불필요.
+  $patchStyleText가 TextNode의 style에 "font-size: 24px"을 넣으면
+  Lexical JSON 직렬화 시 자동 포함.
+  로드 시에도 자동 복원.
+
+
+7. 마이 스타일 반영
+---------------------
+
+  1. 툴바에 버튼 추가 → select 드롭다운으로 구현
+  2. 텍스트 선택하면 버튼에 글자 크기 표시 → $getSelectionStyleValueForProperty로 읽어서 select value에 반영

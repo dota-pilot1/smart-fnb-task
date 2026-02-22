@@ -16,7 +16,7 @@ import {
   type EditorState,
 } from "lexical";
 import { editorTheme } from "./theme";
-import { ToolbarPlugin } from "./ToolbarPlugin";
+import { ToolbarPlugin } from "./toolbar/ToolbarPlugin";
 
 interface LexicalEditorProps {
   initialState?: string;

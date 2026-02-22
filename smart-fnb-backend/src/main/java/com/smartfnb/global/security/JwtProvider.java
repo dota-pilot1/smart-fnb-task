@@ -15,14 +15,18 @@ public class JwtProvider {
 
     private final SecretKey key;
     private final long expirationMs;
+    private final long refreshExpirationMs;
 
     public JwtProvider(
             @Value("${app.jwt.secret}") String secret,
-            @Value("${app.jwt.expiration-ms}") long expirationMs) {
+            @Value("${app.jwt.expiration-ms}") long expirationMs,
+            @Value("${app.jwt.refresh-expiration-ms}") long refreshExpirationMs) {
         this.key = Keys.hmacShaKeyFor(Base64.getDecoder().decode(secret));
         this.expirationMs = expirationMs;
+        this.refreshExpirationMs = refreshExpirationMs;
     }
 
+    /** Access Token: email + role 포함, 만료 1시간 */
     public String generateToken(String email, String role) {
         Date now = new Date();
         return Jwts.builder()
@@ -30,6 +34,17 @@ public class JwtProvider {
                 .claim("role", role)
                 .issuedAt(now)
                 .expiration(new Date(now.getTime() + expirationMs))
+                .signWith(key)
+                .compact();
+    }
+
+    /** Refresh Token: email만 포함, 만료 7일 */
+    public String generateRefreshToken(String email) {
+        Date now = new Date();
+        return Jwts.builder()
+                .subject(email)
+                .issuedAt(now)
+                .expiration(new Date(now.getTime() + refreshExpirationMs))
                 .signWith(key)
                 .compact();
     }
