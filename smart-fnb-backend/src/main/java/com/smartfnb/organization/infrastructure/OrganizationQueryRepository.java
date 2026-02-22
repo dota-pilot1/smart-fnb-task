@@ -57,7 +57,7 @@ public class OrganizationQueryRepository {
 
         // 메인 쿼리: CTE 결과에 users LEFT JOIN
         var rows = dsl
-            .with(orgTreeCte)
+            .withRecursive(orgTreeCte)
             .select(
                 field("org_tree.id", Long.class).as("org_id"),
                 field("org_tree.name", String.class).as("org_name"),
